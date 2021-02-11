@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+import signal
+import subprocess
+import sys
+from textwrap import dedent
+from pathlib import Path
+
+import requests
+
+
+class MobileCoinClient(object):
+
+    def __init__(self):
+        parser = argparse.ArgumentParser(
+            description='MobileCoin command-line wallet.',
+            usage=dedent('''\
+                mob <command> [<args>]
+
+                mob start      Start the local MobileCoin node.
+                mob stop       Stop the local MobileCoin node.
+                mob create     Create a new account.
+                mob list       List currently loaded accounts.
+            '''),
+        )
+        parser.add_argument('command', help='command to run')
+        args = parser.parse_args(sys.argv[1:2])
+        if not hasattr(self, args.command):
+            print(f'"{args.command}" is not a valid command.\n')
+            parser.print_help()
+            exit(1)
+
+        # Run command.
+        getattr(self, args.command)()
+
+    def start(self):
+        parser = argparse.ArgumentParser(description='Start the local MobileCoin node.')
+        parser.add_argument('--offline', action='store_true')
+        args = parser.parse_args(sys.argv[2:])
+
+        node_command = [
+            'full-service',
+            '--wallet-db', 'mc/wallet-db/encrypted-wallet.db',
+            '--ledger-db', 'mc/ledger-db/',
+        ]
+        if args.offline:
+            node_command += [
+                '--offline',
+            ]
+        else:
+            node_command += [
+                '--peer', 'mc://node1.prod.mobilecoinww.com/',
+                '--peer', 'mc://node2.prod.mobilecoinww.com/',
+                '--tx-source-url', 'https://ledger.mobilecoinww.com/node1.prod.mobilecoinww.com/',
+                '--tx-source-url', 'https://ledger.mobilecoinww.com/node2.prod.mobilecoinww.com/',
+            ]
+        node_command += [
+            '>', 'mc/node_log.txt', '2>&1'
+        ]
+
+        print('Starting MobileCoin node...')
+
+        Path('mc').mkdir(exist_ok=True)
+        Path('mc/ledger-db').mkdir(exist_ok=True)
+        Path('mc/wallet-db').mkdir(exist_ok=True)
+
+        os.environ['RUST_LOG'] = 'info'
+        os.environ['mc_ledger_sync'] = 'info'
+        subprocess.Popen(' '.join(node_command), shell=True)
+
+        print('Started.')
+
+    def stop(self):
+        print('Stopping MobileCoin node...')
+        subprocess.Popen(['killall', '-v', 'full-service'])
+
+
+if __name__ == '__main__':
+    MobileCoinClient()
