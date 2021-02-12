@@ -2,11 +2,8 @@
 
 import argparse
 import json
-import simplejson
 import os
 import subprocess
-import sys
-from textwrap import dedent
 from pathlib import Path
 
 import requests
@@ -124,7 +121,7 @@ class MobileCoinClient(object):
             print(f'Could not connect to server at {self.url}. Try running ./mob start')
         try:
             response_data = r.json()
-        except simplejson.errors.JSONDecodeError:
+        except ValueError:
             print(r.text)
             exit(1)
         return response_data
