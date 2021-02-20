@@ -8,6 +8,9 @@ from pathlib import Path
 
 import requests
 
+NETWORK = 'testnet'
+assert NETWORK in ['testnet', 'mainnet']
+
 
 class MobileCoinClient(object):
 
@@ -78,8 +81,12 @@ class MobileCoinClient(object):
         getattr(self, command)()
 
     def start(self):
-        node_command = [
-            'full-service',
+        if NETWORK == 'testnet':
+            node_command = ['full-service-testnet']
+        elif NETWORK == 'mainnet':
+            node_command = ['full-service']
+
+        node_command += [
             '--wallet-db', 'mc/wallet-db/encrypted-wallet.db',
             '--ledger-db', 'mc/ledger-db/',
         ]
@@ -88,17 +95,28 @@ class MobileCoinClient(object):
                 '--offline',
             ]
         else:
-            node_command += [
-                '--peer', 'mc://node1.prod.mobilecoinww.com/',
-                '--peer', 'mc://node2.prod.mobilecoinww.com/',
-                '--tx-source-url', 'https://ledger.mobilecoinww.com/node1.prod.mobilecoinww.com/',
-                '--tx-source-url', 'https://ledger.mobilecoinww.com/node2.prod.mobilecoinww.com/',
-            ]
+            if NETWORK == 'testnet':
+                node_command += [
+                    '--peer mc://node1.test.mobilecoin.com/',
+                    '--peer mc://node2.test.mobilecoin.com/',
+                    '--tx-source-url https://s3-us-west-1.amazonaws.com/mobilecoin.chain/node1.test.mobilecoin.com/',
+                    '--tx-source-url https://s3-us-west-1.amazonaws.com/mobilecoin.chain/node2.test.mobilecoin.com/',
+                ]
+            elif NETWORK == 'mainnet':
+                node_command += [
+                    '--peer', 'mc://node1.prod.mobilecoinww.com/',
+                    '--peer', 'mc://node2.prod.mobilecoinww.com/',
+                    '--tx-source-url', 'https://ledger.mobilecoinww.com/node1.prod.mobilecoinww.com/',
+                    '--tx-source-url', 'https://ledger.mobilecoinww.com/node2.prod.mobilecoinww.com/',
+                ]
         node_command += [
             '>', 'mc/node_log.txt', '2>&1'
         ]
 
-        print('Starting MobileCoin node...')
+        if NETWORK == 'testnet':
+            print('Starting TestNet node...')
+        elif NETWORK == 'mainnet':
+            print('Starting MobileCoin node...')
 
         Path('mc').mkdir(exist_ok=True)
         Path('mc/ledger-db').mkdir(exist_ok=True)
@@ -112,7 +130,10 @@ class MobileCoinClient(object):
 
     def stop(self):
         print('Stopping MobileCoin node...')
-        subprocess.Popen(['killall', '-v', 'full-service'])
+        if NETWORK == 'testnet':
+            subprocess.Popen(['killall', '-v', 'full-service-testnet'])
+        elif NETWORK == 'mainnet':
+            subprocess.Popen(['killall', '-v', 'full-service'])
 
     def req(self, request_data):
         try:
