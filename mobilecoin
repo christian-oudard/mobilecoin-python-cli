@@ -15,9 +15,9 @@ class MobileCoinClient(object):
 
     def __init__(self):
         parser = argparse.ArgumentParser(
-            prog='mob',
+            prog='mobilecoin',
             description='MobileCoin command-line wallet.',
-            usage='mob <command>',
+            usage='mobilecoin <command>',
         )
         subparsers = parser.add_subparsers(dest='command')
 
@@ -118,7 +118,7 @@ class MobileCoinClient(object):
         try:
             r = requests.post(self.url, json=request_data)
         except requests.ConnectionError:
-            print(f'Could not connect to server at {self.url}. Try running ./mob start')
+            print(f'Could not connect to server at {self.url}. Try running ./mobilecoin start')
         try:
             response_data = r.json()
         except ValueError:
