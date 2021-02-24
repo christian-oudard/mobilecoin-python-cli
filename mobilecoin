@@ -12,6 +12,7 @@ import requests
 NETWORK = 'testnet'
 assert NETWORK in ['testnet', 'mainnet']
 MC_DATA = Path.home() / '.mobilecoin'
+LOG_LOCATION = MC_DATA / 'node_log.txt'
 
 
 class MobileCoinClient(object):
@@ -30,6 +31,7 @@ class MobileCoinClient(object):
 
         start_args = subparsers.add_parser('start', help='Start the local MobileCoin node.')
         start_args.add_argument('--offline', action='store_true')
+        start_args.add_argument('--bg', action='store_true')
 
         subparsers.add_parser('stop', help='Stop the local MobileCoin node.')
 
@@ -114,15 +116,18 @@ class MobileCoinClient(object):
                     '--tx-source-url', 'https://ledger.mobilecoinww.com/node1.prod.mobilecoinww.com/',
                     '--tx-source-url', 'https://ledger.mobilecoinww.com/node2.prod.mobilecoinww.com/',
                 ]
-        # node_command += [
-        #     '>', str(MC_DATA / 'node_log.txt'), '2>&1'
-        # ]
+        if self.args.bg:
+            node_command += [
+                '>', str(LOG_LOCATION), '2>&1'
+            ]
+
         if NETWORK == 'testnet':
             print('Starting TestNet node...')
         elif NETWORK == 'mainnet':
             print('Starting MobileCoin node...')
 
-        print(' '.join(node_command))
+        if self.args.verbose:
+            print(' '.join(node_command))
 
         MC_DATA.mkdir(exist_ok=True)
         (MC_DATA / 'ledger-db').mkdir(exist_ok=True)
@@ -130,9 +135,12 @@ class MobileCoinClient(object):
 
         os.environ['RUST_LOG'] = 'info'
         os.environ['mc_ledger_sync'] = 'info'
-        subprocess.run(' '.join(node_command), shell=True)
-
-        # print('Started.')
+        if self.args.bg:
+            subprocess.Popen(' '.join(node_command), shell=True)
+            print('Started, view log at {}.'.format(LOG_LOCATION))
+            print('Stop server with "mobilecoin stop".')
+        else:
+            subprocess.run(' '.join(node_command), shell=True)
 
     def stop(self):
         print('Stopping MobileCoin node...')
