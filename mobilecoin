@@ -25,7 +25,7 @@ class MobileCoinClient(object):
             description='MobileCoin command-line wallet.',
             usage='mobilecoin <command>',
         )
-        parser.add_argument('-v', '--verbose', action='store_true')
+        parser.add_argument('-q', '--quiet', action='store_true')
 
         subparsers = parser.add_subparsers(dest='command')
 
@@ -52,6 +52,11 @@ class MobileCoinClient(object):
         transactions_args = subparsers.add_parser('transactions', help='List account transactions.')
         transactions_args.add_argument('-f', '--file', metavar='file', help='Account secret json file.')
         transactions_args.add_argument('account_id', help='Account ID code.', nargs='?')
+
+        send_args = subparsers.add_parser('send', help='List account transactions.')
+        send_args.add_argument('amount', help='Amount of MOB to send.', type=float)
+        send_args.add_argument('from_account_id', help='Account ID to send from.')
+        send_args.add_argument('to_address', help='Address to send to.')
 
         self.args = parser.parse_args()
 
@@ -126,7 +131,7 @@ class MobileCoinClient(object):
         elif NETWORK == 'mainnet':
             print('Starting MobileCoin node...')
 
-        if self.args.verbose:
+        if not self.args.quiet:
             print(' '.join(node_command))
 
         MC_DATA.mkdir(exist_ok=True)
@@ -150,7 +155,7 @@ class MobileCoinClient(object):
             subprocess.Popen(['killall', '-v', 'full-service'])
 
     def req(self, request_data):
-        if self.args.verbose:
+        if not self.args.quiet:
             print('POST', self.url)
             print(json.dumps(request_data, indent=4))
             print()
@@ -166,7 +171,7 @@ class MobileCoinClient(object):
             print(r.text)
             exit(1)
 
-        if self.args.verbose:
+        if not self.args.quiet:
             print(r.status_code, http.client.responses[r.status_code])
             print(json.dumps(response_data, indent=4))
             print()
@@ -209,7 +214,7 @@ class MobileCoinClient(object):
             "name": name
         }
         if self.args.height is not None:
-            params["height"] = self.args.height
+            params["height"] = str(self.args.height)
 
         self.req({
             "method": "import_account",
@@ -246,6 +251,17 @@ class MobileCoinClient(object):
             "method": "get_all_txos_by_account",
             "params": {
                 "account_id": account_id
+            }
+        })
+
+    def send(self):
+        amount = int(self.args.amount * 1e12)
+        self.req({
+            "method": "send_transaction",
+            "params": {
+                "account_id": self.args.from_account_id,
+                "recipient_public_address": self.args.to_address,
+                "value": str(amount),
             }
         })
 
