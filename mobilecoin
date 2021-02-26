@@ -22,6 +22,37 @@ class Client:
         self.url = url
         self.verbose = verbose
 
+    def _req(self, request_data):
+        request_data.update({
+            "jsonrpc": "2.0",
+            "api_version": "2",
+            "id": 1
+        })
+
+        if self.verbose:
+            print('POST', self.url)
+            print(json.dumps(request_data, indent=4))
+            print()
+
+        try:
+            r = requests.post(self.url, json=request_data)
+        except requests.ConnectionError:
+            # print(f'Could not connect to server at {self.url}. Try running ./mobilecoin start')
+            raise
+
+        try:
+            response_data = r.json()
+        except ValueError:
+            print('API Error:', r.text)
+            exit(1)
+
+        if self.verbose:
+            print(r.status_code, http.client.responses[r.status_code])
+            print(json.dumps(response_data, indent=4))
+            print()
+
+        return response_data
+
     def start(self, offline=False, bg=False):
         if NETWORK == 'testnet':
             wallet_server_command = ['full-service-testnet']
@@ -85,42 +116,19 @@ class Client:
         elif NETWORK == 'mainnet':
             subprocess.Popen(['killall', '-v', 'full-service'])
 
-    def req(self, request_data):
-        request_data.update({
-            "jsonrpc": "2.0",
-            "api_version": "2",
-            "id": 1
+    def list(self):
+        return self._req({"method": "get_all_accounts"})
+
+    def balance(self, account_id):
+        return self._req({
+            "method": "get_balance_for_account",
+            "params": {
+                "account_id": account_id,
+            }
         })
 
-        if self.verbose:
-            print('POST', self.url)
-            print(json.dumps(request_data, indent=4))
-            print()
-
-        try:
-            r = requests.post(self.url, json=request_data)
-        except requests.ConnectionError:
-            # print(f'Could not connect to server at {self.url}. Try running ./mobilecoin start')
-            raise
-
-        try:
-            response_data = r.json()
-        except ValueError:
-            print(r.text)
-            raise
-
-        if self.verbose:
-            print(r.status_code, http.client.responses[r.status_code])
-            print(json.dumps(response_data, indent=4))
-            print()
-
-        return response_data
-
-    def list(self):
-        return self.req({"method": "get_all_accounts"})
-
     def create_account(self, name):
-        return self.req({
+        return self._req({
             "method": "create_account",
             "params": {
                 "name": name
@@ -135,13 +143,13 @@ class Client:
         if height is not None:
             params["height"] = str(int(height))
 
-        return self.req({
+        return self._req({
             "method": "import_account",
             "params": params,
         })
 
     def delete(self, account_id):
-        return self.req({
+        return self._req({
             "method": "delete_account",
             "params": {
                 "account_id": account_id,
@@ -149,7 +157,7 @@ class Client:
         })
 
     def transactions(self, account_id):
-        return self.req({
+        return self._req({
             "method": "get_all_txos_by_account",
             "params": {
                 "account_id": account_id
@@ -158,7 +166,7 @@ class Client:
 
     def send(self, from_account_id, to_address, amount):
         amount = str(mob2pmob(amount))
-        self.req({
+        self._req({
             "method": "send_transaction",
             "params": {
                 "account_id": from_account_id,
@@ -168,12 +176,24 @@ class Client:
         })
 
 
-def check_account(client, account_id):
+# User Interface.
+
+def load_account(client, prefix):
     data = client.list()
-    if account_id not in data['result']['account_map']:
-        print('Could not find account', account_id)
+    account_ids = data['result']['account_ids']
+    matching_ids = [
+        a_id for a_id in account_ids
+        if a_id.startswith(prefix)
+    ]
+    if len(matching_ids) == 0:
+        print('Could not find account starting with', prefix)
         exit(1)
-    return data['result']
+    elif len(matching_ids) == 1:
+        account_id = matching_ids[0]
+        return data['result']['account_map'][account_id]
+    else:
+        print('Multiple matching matching ids: {}'.format(', '.join(matching_ids)))
+        exit(1)
 
 
 def pmob2mob(x):
@@ -201,6 +221,9 @@ def main():
     subparsers.add_parser('stop', help='Stop the local MobileCoin wallet server.')
 
     subparsers.add_parser('list', help='List accounts.')
+
+    balance_args = subparsers.add_parser('balance', help='Show account balance')
+    balance_args.add_argument('account_id', help='Account ID code.')
 
     create_args = subparsers.add_parser('create', help='Create a new account.')
     create_args.add_argument('name', help='Account name.')
@@ -239,13 +262,23 @@ def main():
             return
 
         for account_id, account in accounts.items():
-            is_synced = 'Synced' if account['is_synced'] else 'Not Synced'
-            amount = pmob2mob(account['available_pmob'])
             print()
-            print('{}  [ {} ]'.format(account['name'], account_id))
-            print(f'    {amount} MOB ({is_synced})')
-            print('    ' + account['main_address'])
+            print(account['name'])
+            print('  id', account_id)
+            print('  address', account['main_address'])
         print()
+        return
+
+    elif command == 'balance':
+        account_id = args.pop('account_id')
+        account = load_account(client, account_id)
+        data = client.balance(account['account_id'])
+        balance = data['result']['balance']
+        if balance['is_synced']:
+            print('{} MOB (synced)'.format(pmob2mob(balance['unspent_pmob'])))
+        else:
+            print('still syncing, {}/{} blocks scanned'.format(
+                balance['account_block_count'], balance['network_block_count']))
         return
 
     elif command == 'create':
@@ -265,11 +298,11 @@ def main():
 
     elif command == 'delete':
         account_id = args.pop('account_id')
-        check_account(client, account_id)
+        account = load_account(client, account_id)
 
         confirmation = input('\n'.join([
-            'This will delete all stored information for the account',
-            f'{account_id}.',
+            'This will delete all stored information for the account {},'.format(account['name']),
+            'account id {}'.format(account['account_id']),
             'You will lose access to the funds in this account unless you',
             'restore it from the root entropy. Continue? (Y/n) '
         ]))
