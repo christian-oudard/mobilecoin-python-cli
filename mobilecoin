@@ -11,128 +11,58 @@ import requests
 
 NETWORK = 'testnet'
 assert NETWORK in ['testnet', 'mainnet']
-MC_DATA = Path.home() / '.mobilecoin'
-LOG_LOCATION = MC_DATA / 'node_log.txt'
+DEFAULT_URL = 'http://127.0.0.1:9090/wallet'
+MC_DATA = Path.home() / '.mobilecoin' / NETWORK
+LOG_LOCATION = MC_DATA / 'wallet_server_log.txt'
 
 
-class MobileCoinClient(object):
+class Client:
 
-    url = 'http://127.0.0.1:9090/wallet'
+    def __init__(self, url=DEFAULT_URL, verbose=False):
+        self.url = url
+        self.verbose = verbose
 
-    def __init__(self):
-        parser = argparse.ArgumentParser(
-            prog='mobilecoin',
-            description='MobileCoin command-line wallet.',
-            usage='mobilecoin <command>',
-        )
-        parser.add_argument('-q', '--quiet', action='store_true')
-
-        subparsers = parser.add_subparsers(dest='command')
-
-        start_args = subparsers.add_parser('start', help='Start the local MobileCoin node.')
-        start_args.add_argument('--offline', action='store_true')
-        start_args.add_argument('--bg', action='store_true')
-
-        subparsers.add_parser('stop', help='Stop the local MobileCoin node.')
-
-        subparsers.add_parser('list', help='List accounts.')
-
-        create_args = subparsers.add_parser('create', help='Create a new account.')
-        create_args.add_argument('name', help='Account name')
-
-        import_args = subparsers.add_parser('import', help='Import an account.')
-        import_args.add_argument('-f', '--file', metavar='file', help='Account secret json file.')
-        import_args.add_argument('entropy', help='Secret entropy.', nargs='?')
-        import_args.add_argument('name', help='Account name', nargs='?')
-        import_args.add_argument('-H', '--height', help='Account height', type=int)
-
-        delete_args = subparsers.add_parser('delete', help='Delete an account from local storage.')
-        delete_args.add_argument('account_id', help='Account ID code.')
-
-        transactions_args = subparsers.add_parser('transactions', help='List account transactions.')
-        transactions_args.add_argument('-f', '--file', metavar='file', help='Account secret json file.')
-        transactions_args.add_argument('account_id', help='Account ID code.', nargs='?')
-
-        send_args = subparsers.add_parser('send', help='List account transactions.')
-        send_args.add_argument('amount', help='Amount of MOB to send.', type=float)
-        send_args.add_argument('from_account_id', help='Account ID to send from.')
-        send_args.add_argument('to_address', help='Address to send to.')
-
-        self.args = parser.parse_args()
-
-        # Check args.
-        if self.args.command == 'import':
-            if (
-                self.args.file is None
-                and (
-                    self.args.entropy is None
-                    or self.args.name is None
-                )
-            ):
-                print('Please provide entropy and account name, or a secret key file to import.')
-                import_args.print_help()
-                exit(1)
-
-        if self.args.command == 'transactions':
-            if (
-                self.args.file is None
-                and self.args.account_id is None
-            ):
-                print('Please provide an account id or a secret key file.')
-                transactions_args.print_help()
-                exit(1)
-
-        # Can't name a method "import", so fix it here.
-        setattr(self, 'import', self.import_)
-
-        # Dispatch command.
-        command = self.args.command
-        if command is None or not hasattr(self, command):
-            parser.print_help()
-            exit(1)
-        getattr(self, command)()
-
-    def start(self):
+    def start(self, offline=False, bg=False):
         if NETWORK == 'testnet':
-            node_command = ['full-service-testnet']
+            wallet_server_command = ['full-service-testnet']
         elif NETWORK == 'mainnet':
-            node_command = ['full-service-mainnet']
+            wallet_server_command = ['full-service-mainnet']
 
-        node_command += [
+        wallet_server_command += [
             '--wallet-db', str(MC_DATA / 'wallet-db/encrypted-wallet.db'),
             '--ledger-db', str(MC_DATA / 'ledger-db'),
         ]
-        if self.args.offline:
-            node_command += [
+        if offline:
+            wallet_server_command += [
                 '--offline',
             ]
         else:
             if NETWORK == 'testnet':
-                node_command += [
+                wallet_server_command += [
                     '--peer mc://node1.test.mobilecoin.com/',
                     '--peer mc://node2.test.mobilecoin.com/',
                     '--tx-source-url https://s3-us-west-1.amazonaws.com/mobilecoin.chain/node1.test.mobilecoin.com/',
                     '--tx-source-url https://s3-us-west-1.amazonaws.com/mobilecoin.chain/node2.test.mobilecoin.com/',
                 ]
             elif NETWORK == 'mainnet':
-                node_command += [
+                wallet_server_command += [
                     '--peer', 'mc://node1.prod.mobilecoinww.com/',
                     '--peer', 'mc://node2.prod.mobilecoinww.com/',
                     '--tx-source-url', 'https://ledger.mobilecoinww.com/node1.prod.mobilecoinww.com/',
                     '--tx-source-url', 'https://ledger.mobilecoinww.com/node2.prod.mobilecoinww.com/',
                 ]
-        if self.args.bg:
-            node_command += [
+        if bg:
+            wallet_server_command += [
                 '>', str(LOG_LOCATION), '2>&1'
             ]
 
         if NETWORK == 'testnet':
-            print('Starting TestNet node...')
+            print('Starting TestNet wallet server...')
         elif NETWORK == 'mainnet':
-            print('Starting MobileCoin node...')
+            print('Starting MobileCoin wallet server...')
 
-        if not self.args.quiet:
-            print(' '.join(node_command))
+        if self.verbose:
+            print(' '.join(wallet_server_command))
 
         MC_DATA.mkdir(exist_ok=True)
         (MC_DATA / 'ledger-db').mkdir(exist_ok=True)
@@ -140,22 +70,29 @@ class MobileCoinClient(object):
 
         os.environ['RUST_LOG'] = 'info'
         os.environ['mc_ledger_sync'] = 'info'
-        if self.args.bg:
-            subprocess.Popen(' '.join(node_command), shell=True)
+        if bg:
+            subprocess.Popen(' '.join(wallet_server_command), shell=True)
             print('Started, view log at {}.'.format(LOG_LOCATION))
             print('Stop server with "mobilecoin stop".')
         else:
-            subprocess.run(' '.join(node_command), shell=True)
+            subprocess.run(' '.join(wallet_server_command), shell=True)
 
     def stop(self):
-        print('Stopping MobileCoin node...')
+        if self.verbose:
+            print('Stopping MobileCoin wallet server...')
         if NETWORK == 'testnet':
             subprocess.Popen(['killall', '-v', 'full-service-testnet'])
         elif NETWORK == 'mainnet':
             subprocess.Popen(['killall', '-v', 'full-service'])
 
     def req(self, request_data):
-        if not self.args.quiet:
+        request_data.update({
+            "jsonrpc": "2.0",
+            "api_version": "2",
+            "id": 1
+        })
+
+        if self.verbose:
             print('POST', self.url)
             print(json.dumps(request_data, indent=4))
             print()
@@ -163,15 +100,16 @@ class MobileCoinClient(object):
         try:
             r = requests.post(self.url, json=request_data)
         except requests.ConnectionError:
-            print(f'Could not connect to server at {self.url}. Try running ./mobilecoin start')
-            exit(1)
+            # print(f'Could not connect to server at {self.url}. Try running ./mobilecoin start')
+            raise
+
         try:
             response_data = r.json()
         except ValueError:
             print(r.text)
-            exit(1)
+            raise
 
-        if not self.args.quiet:
+        if self.verbose:
             print(r.status_code, http.client.responses[r.status_code])
             print(json.dumps(response_data, indent=4))
             print()
@@ -179,92 +117,170 @@ class MobileCoinClient(object):
         return response_data
 
     def list(self):
-        self.req({"method": "get_all_accounts"})
+        return self.req({"method": "get_all_accounts"})
 
-    def create(self):
-        data = self.req({
+    def create_account(self, name):
+        return self.req({
             "method": "create_account",
             "params": {
-                "name": self.args.name
+                "name": name
             }
         })
-        account_data = data['result']
-        account_id = account_data['account']['account_id']
-        filename = f'mobilecoin_secret_{account_id}.json'
-        with open(filename, 'w') as f:
-            json.dump(data['result'], f, indent=4) 
-        print(f'Created a new account, "{self.args.name}".')
-        print(f'Wrote secret credentials to {filename}')
 
-    def import_(self):
-        if self.args.file is not None:
-            with open(self.args.file) as f:
-                account_data = json.load(f)
-                entropy = account_data['entropy']
-                name = account_data['account']['name']
-        else:
-            entropy = self.args.entropy
-            name = self.args.name
-
-        assert entropy is not None
-        assert name is not None
-
+    def import_account(self, name, entropy, height=None):
         params = {
             "entropy": entropy,
             "name": name
         }
-        if self.args.height is not None:
-            params["height"] = str(self.args.height)
+        if height is not None:
+            params["height"] = str(int(height))
 
-        self.req({
+        return self.req({
             "method": "import_account",
             "params": params,
         })
 
-    def delete(self):
-        confirmation = input(
-            'This will delete all information for the account {}. Continue? (Y/n) '.format(
-                self.args.account_id)
-        )
-        if confirmation.lower() not in ['y', 'yes']:
-            print('Cancelled.')
-            return
-
-        self.req({
+    def delete(self, account_id):
+        return self.req({
             "method": "delete_account",
             "params": {
-                "account_id": self.args.account_id,
+                "account_id": account_id,
             }
         })
 
-    def transactions(self):
-        if self.args.file is not None:
-            with open(self.args.file) as f:
-                account_data = json.load(f)
-                account_id = account_data['account']['account_id']
-        else:
-            account_id = self.args
-
-        assert account_id is not None
-
-        self.req({
+    def transactions(self, account_id):
+        return self.req({
             "method": "get_all_txos_by_account",
             "params": {
                 "account_id": account_id
             }
         })
 
-    def send(self):
-        amount = int(self.args.amount * 1e12)
+    def send(self, from_account_id, to_address, amount):
+        amount = str(mob2pmob(amount))
         self.req({
             "method": "send_transaction",
             "params": {
-                "account_id": self.args.from_account_id,
-                "recipient_public_address": self.args.to_address,
-                "value": str(amount),
+                "account_id": from_account_id,
+                "recipient_public_address": to_address,
+                "value": amount,
             }
         })
 
 
+def check_account(client, account_id):
+    data = client.list()
+    if account_id not in data['result']['account_map']:
+        print('Could not find account', account_id)
+        exit(1)
+    return data['result']
+
+
+def pmob2mob(x):
+    return int(x) / 1e12
+
+
+def mob2pmob(x):
+    return int(float(x) * 1e12)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog='mobilecoin',
+        description='MobileCoin command-line wallet.',
+    )
+    parser.add_argument('-v', '--verbose', action='store_true', help='Show more information.')
+
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+
+    start_args = subparsers.add_parser('start', help='Start the local MobileCoin wallet server.')
+    start_args.add_argument('--offline', action='store_true', help='Start in offline mode.')
+    start_args.add_argument('--bg', action='store_true',
+                            help='Start server in the background, stop with "mobilecoin stop".')
+
+    subparsers.add_parser('stop', help='Stop the local MobileCoin wallet server.')
+
+    subparsers.add_parser('list', help='List accounts.')
+
+    create_args = subparsers.add_parser('create', help='Create a new account.')
+    create_args.add_argument('name', help='Account name.')
+
+    import_args = subparsers.add_parser('import', help='Import an account.')
+    import_args.add_argument('-H', '--height', type=int,
+                             help='Account height. No transactions before this block will be loaded.')
+    import_args.add_argument('name', help='Account name.')
+    import_args.add_argument('entropy', help='Secret root entropy.')
+
+    delete_args = subparsers.add_parser('delete', help='Delete an account from local storage.')
+    delete_args.add_argument('account_id', help='Account ID code.')
+
+    transactions_args = subparsers.add_parser('transactions', help='List account transactions.')
+    transactions_args.add_argument('account_id', help='Account ID code.', nargs='?')
+
+    send_args = subparsers.add_parser('send', help='Send a transaction.')
+    send_args.add_argument('amount', help='Amount of MOB to send.', type=float)
+    send_args.add_argument('from_account_id', help='Account ID to send from.')
+    send_args.add_argument('to_address', help='Address to send to.')
+
+    args = parser.parse_args()
+    args = vars(args)
+    command = args.pop('command')
+    if command is None:
+        parser.print_help()
+        exit(1)
+
+    client = Client(verbose=args.pop('verbose'))
+
+    if command == 'list':
+        data = client.list(**args)
+        for account_id, account in data['result']['account_map'].items():
+            is_synced = 'Synced' if account['is_synced'] else 'Not Synced'
+            amount = pmob2mob(account['available_pmob'])
+            print()
+            print('{}  [ {} ]'.format(account['name'], account_id))
+            print(f'    {amount} MOB ({is_synced})')
+            print('    ' + account['main_address'])
+        print()
+        exit(0)
+
+    elif command == 'create':
+        data = client.create_account(**args)
+        account_data = data['result']
+        account_id = account_data['account']['account_id']
+        filename = f'mobilecoin_secret_{account_id}.json'
+        with open(filename, 'w') as f:
+            json.dump(data['result'], f, indent=4)
+        print(f'Created a new account, "{args.name}".')
+        print(f'Wrote secret credentials to {filename}')
+        exit(0)
+
+    elif command == 'import':
+        client.import_account(**args)
+        exit(0)
+
+    elif command == 'delete':
+        account_id = args.pop('account_id')
+        check_account(client, account_id)
+
+        confirmation = input('\n'.join([
+            'This will delete all stored information for the account',
+            f'{account_id}.',
+            'You will lose access to the funds in this account unless you',
+            'restore it from the root entropy. Continue? (Y/n) '
+        ]))
+        if confirmation.lower() not in ['y', 'yes']:
+            print('Cancelled.')
+            exit(0)
+        else:
+            client.delete(account_id)
+            print('Deleted.')
+            exit(0)
+
+    else:  # No special handling.
+        command_method = getattr(client, command)
+        command_method(**args)
+        exit(0)
+
+
 if __name__ == '__main__':
-    MobileCoinClient()
+    main()
