@@ -233,7 +233,12 @@ def main():
 
     if command == 'list':
         data = client.list(**args)
-        for account_id, account in data['result']['account_map'].items():
+        accounts = data['result']['account_map']
+        if len(accounts) == 0:
+            print('No accounts.')
+            return
+
+        for account_id, account in accounts.items():
             is_synced = 'Synced' if account['is_synced'] else 'Not Synced'
             amount = pmob2mob(account['available_pmob'])
             print()
@@ -241,7 +246,7 @@ def main():
             print(f'    {amount} MOB ({is_synced})')
             print('    ' + account['main_address'])
         print()
-        exit(0)
+        return
 
     elif command == 'create':
         data = client.create_account(**args)
@@ -252,11 +257,11 @@ def main():
             json.dump(data['result'], f, indent=4)
         print(f'Created a new account, "{args.name}".')
         print(f'Wrote secret credentials to {filename}')
-        exit(0)
+        return
 
     elif command == 'import':
         client.import_account(**args)
-        exit(0)
+        return
 
     elif command == 'delete':
         account_id = args.pop('account_id')
@@ -270,16 +275,16 @@ def main():
         ]))
         if confirmation.lower() not in ['y', 'yes']:
             print('Cancelled.')
-            exit(0)
+            return
         else:
             client.delete(account_id)
             print('Deleted.')
-            exit(0)
+            return
 
     else:  # No special handling.
         command_method = getattr(client, command)
         command_method(**args)
-        exit(0)
+        return
 
 
 if __name__ == '__main__':
