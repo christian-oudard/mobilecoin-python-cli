@@ -55,9 +55,9 @@ class Client:
 
     def start(self, offline=False, bg=False):
         if NETWORK == 'testnet':
-            wallet_server_command = ['full-service-testnet']
+            wallet_server_command = ['./full-service-testnet']
         elif NETWORK == 'mainnet':
-            wallet_server_command = ['full-service-mainnet']
+            wallet_server_command = ['./full-service-mainnet']
 
         wallet_server_command += [
             '--wallet-db', str(MC_DATA / 'wallet-db/encrypted-wallet.db'),
