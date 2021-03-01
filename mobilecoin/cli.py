@@ -142,8 +142,8 @@ class CommandLineInterface:
             subprocess.Popen(['killall', '-v', 'full-service'])
 
     def _load_account(self, prefix):
-        data = self.client.get_all_accounts()
-        account_ids = data['result']['account_ids']
+        response = self.client.get_all_accounts()
+        account_ids = response['result']['account_ids']
         matching_ids = [
             a_id for a_id in account_ids
             if a_id.startswith(prefix)
@@ -153,21 +153,21 @@ class CommandLineInterface:
             exit(1)
         elif len(matching_ids) == 1:
             account_id = matching_ids[0]
-            return data['result']['account_map'][account_id]
+            return response['result']['account_map'][account_id]
         else:
             print('Multiple matching matching ids: {}'.format(', '.join(matching_ids)))
             exit(1)
 
     def create(self, **args):
-        data = self.client.create_account(**args)
-        account_data = data['result']
-        account_id = account_data['account']['account_id']
+        response = self.client.create_account(**args)
+        account = response['result']['account']
+        account_id = account['account_id']
+        entropy = account['entropy']
         filename = f'mobilecoin_secret_entropy_{account_id}.txt'
-        # with open(filename, 'w') as f:
-        #     f.write(account_id
-        #     json.dump(data['result'], f, indent=4)
+        with open(filename, 'w') as f:
+            f.write(entropy)
         print('Created a new account, "{}".'.format(args['name']))
-        print(f'Wrote secret credentials to {filename}')
+        print(f'Wrote account root entropy to {filename}')
 
     def import_(self, **args):
         self.client.import_account(**args)
@@ -184,12 +184,12 @@ class CommandLineInterface:
         if confirmation.lower() not in ['y', 'yes']:
             print('Cancelled.')
         else:
-            self.client.delete(account['account_id'])
+            self.client.delete_account(account['account_id'])
             print('Deleted.')
 
     def list(self, **args):
-        data = self.client.get_all_accounts(**args)
-        accounts = data['result']['account_map']
+        response = self.client.get_all_accounts(**args)
+        accounts = response['result']['account_map']
         if len(accounts) == 0:
             print('No accounts.')
             return
@@ -201,8 +201,8 @@ class CommandLineInterface:
             print('  address', account['main_address'])
 
             # Show balance.
-            data = self.client.balance(account['account_id'])
-            balance = data['result']['balance']
+            response = self.client.balance(account['account_id'])
+            balance = response['result']['balance']
 
             total_blocks = int(balance['network_block_count'])
             offline = (total_blocks == 0)

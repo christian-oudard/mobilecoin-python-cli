@@ -44,7 +44,7 @@ class Client:
 
         return response_data
 
-    def create_account(self, name, block):
+    def create_account(self, name, block=None):
         params = {"name": name}
         if block is not None:
             params["first_block_index"] = str(int(block))
@@ -82,7 +82,7 @@ class Client:
             }
         })
 
-    def delete(self, account_id):
+    def delete_account(self, account_id):
         return self._req({
             "method": "delete_account",
             "params": {
