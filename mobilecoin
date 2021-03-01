@@ -95,7 +95,7 @@ class Client:
         if self.verbose:
             print(' '.join(wallet_server_command))
 
-        MC_DATA.mkdir(exist_ok=True)
+        MC_DATA.mkdir(parents=True, exist_ok=True)
         (MC_DATA / 'ledger-db').mkdir(exist_ok=True)
         (MC_DATA / 'wallet-db').mkdir(exist_ok=True)
 
@@ -127,21 +127,22 @@ class Client:
             }
         })
 
-    def create_account(self, name):
+    def create_account(self, name, block):
+        params = {"name": name}
+        if block is not None:
+            params["first_block_index"] = str(int(block))
         return self._req({
             "method": "create_account",
-            "params": {
-                "name": name
-            }
+            "params": params,
         })
 
-    def import_account(self, name, entropy, height=None):
+    def import_account(self, name, entropy, block=None):
         params = {
             "entropy": entropy,
             "name": name
         }
-        if height is not None:
-            params["height"] = str(int(height))
+        if block is not None:
+            params["first_block_index"] = str(int(block))
 
         return self._req({
             "method": "import_account",
@@ -227,10 +228,12 @@ def main():
 
     create_args = subparsers.add_parser('create', help='Create a new account.')
     create_args.add_argument('name', help='Account name.')
+    create_args.add_argument('-b', '--block', type=int,
+                             help='Block index at which to start the account. No transactions before this block will be loaded.')
 
     import_args = subparsers.add_parser('import', help='Import an account.')
-    import_args.add_argument('-H', '--height', type=int,
-                             help='Account height. No transactions before this block will be loaded.')
+    import_args.add_argument('-b', '--block', type=int,
+                             help='Block index at which to start the account. No transactions before this block will be loaded.')
     import_args.add_argument('name', help='Account name.')
     import_args.add_argument('entropy', help='Secret root entropy.')
 
@@ -288,7 +291,7 @@ def main():
         filename = f'mobilecoin_secret_{account_id}.json'
         with open(filename, 'w') as f:
             json.dump(data['result'], f, indent=4)
-        print(f'Created a new account, "{args.name}".')
+        print('Created a new account, "{}".'.format(args['name']))
         print(f'Wrote secret credentials to {filename}')
         return
 
@@ -310,7 +313,7 @@ def main():
             print('Cancelled.')
             return
         else:
-            client.delete(account_id)
+            client.delete(account['account_id'])
             print('Deleted.')
             return
 
