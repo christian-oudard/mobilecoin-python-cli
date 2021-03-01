@@ -277,11 +277,18 @@ def main():
         account = load_account(client, account_id)
         data = client.balance(account['account_id'])
         balance = data['result']['balance']
-        if balance['is_synced']:
-            print('{} MOB (synced)'.format(pmob2mob(balance['unspent_pmob'])))
-        else:
-            print('still syncing, {}/{} blocks scanned'.format(
-                balance['account_block_count'], balance['network_block_count']))
+
+        total_blocks = int(balance['network_block_count'])
+        offline = (total_blocks == 0)
+        if offline:
+            total_blocks = balance['local_block_count']
+            print('[offline]')
+
+        print('{} MOB ({}/{} blocks synced)'.format(
+            pmob2mob(balance['unspent_pmob']),
+            balance['account_block_count'],
+            total_blocks,
+        ))
         return
 
     elif command == 'create':
