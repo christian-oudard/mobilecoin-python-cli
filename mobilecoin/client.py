@@ -1,3 +1,4 @@
+from decimal import Decimal
 import http
 import json
 
@@ -13,12 +14,6 @@ class Client:
         self.verbose = verbose
 
     def _req(self, request_data):
-        request_data.update({
-            "jsonrpc": "2.0",
-            "api_version": "2",
-            "id": 1
-        })
-
         if self.verbose:
             print('POST', self.url)
             print(json.dumps(request_data, indent=4))
@@ -43,11 +38,22 @@ class Client:
 
         return response_data
 
+    def _req_v1(self, request_data):
+        return self._req(request_data)
+
+    def _req_v2(self, request_data):
+        default_params = {
+            "jsonrpc": "2.0",
+            "api_version": "2",
+            "id": 1,
+        }
+        return self._req({**default_params, **request_data})
+
     def create_account(self, name, block=None):
         params = {"name": name}
         if block is not None:
             params["first_block_index"] = str(int(block))
-        return self._req({
+        return self._req_v2({
             "method": "create_account",
             "params": params,
         })
@@ -60,16 +66,16 @@ class Client:
         if block is not None:
             params["first_block_index"] = str(int(block))
 
-        return self._req({
+        return self._req_v2({
             "method": "import_account",
             "params": params,
         })
 
     def get_all_accounts(self):
-        return self._req({"method": "get_all_accounts"})
+        return self._req_v2({"method": "get_all_accounts"})
 
     def get_account(self, account_id):
-        return self._req({
+        return self._req_v2({
             "method": "get_account",
             "params": {
                 "account_id": account_id,
@@ -77,7 +83,7 @@ class Client:
         })
 
     def update_account_name(self, account_id, name):
-        return self._req({
+        return self._req_v2({
             "method": "update_account_name",
             "params": {
                 "account_id": account_id,
@@ -86,7 +92,7 @@ class Client:
         })
 
     def balance(self, account_id):
-        return self._req({
+        return self._req_v2({
             "method": "get_balance_for_account",
             "params": {
                 "account_id": account_id,
@@ -94,7 +100,7 @@ class Client:
         })
 
     def delete_account(self, account_id):
-        return self._req({
+        return self._req_v2({
             "method": "delete_account",
             "params": {
                 "account_id": account_id,
@@ -102,29 +108,30 @@ class Client:
         })
 
     def get_all_txos_by_account(self, account_id):
-        return self._req({
+        return self._req_v2({
             "method": "get_all_txos_by_account",
             "params": {
                 "account_id": account_id
             }
         })
 
-    def send(self, from_account_id, to_address, amount):
-        self._req({
+    def send_transaction(self, from_account_id, amount, to_address):
+        amount = str(mob2pmob(Decimal(amount)))
+        self._req_v1({
             "method": "send_transaction",
             "params": {
                 "account_id": from_account_id,
-                "recipient_public_address": to_address,
                 "value": amount,
+                "recipient_public_address": to_address,
             }
         })
 
 
 def mob2pmob(x):
     """ Convert from MOB to picoMOB. """
-    return int(float(x) * 1e12)
+    return round(Decimal(x) * Decimal('1e12'))
 
 
 def pmob2mob(x):
     """ Convert from picoMOB to MOB. """
-    return int(x) / 1e12
+    return Decimal(x) / Decimal('1e12')
