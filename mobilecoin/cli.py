@@ -19,7 +19,7 @@ LOG_LOCATION = MC_DATA / 'wallet_server_log.txt'
 
 class CommandLineInterface:
 
-    def __init__(self):
+    def main(self):
         parser = self._parser()
         args = parser.parse_args()
         args = vars(args)
@@ -68,6 +68,9 @@ class CommandLineInterface:
 
         subparsers.add_parser('list', help='List accounts.')
 
+        show_secrets_args = subparsers.add_parser('show_secrets', help='Show account secrets.')
+        show_secrets_args.add_argument('account_id', help='Account ID code.')
+
         transactions_args = subparsers.add_parser('transactions', help='List account transactions.')
         transactions_args.add_argument('account_id', help='Account ID code.', nargs='?')
 
@@ -77,6 +80,23 @@ class CommandLineInterface:
         send_args.add_argument('to_address', help='Address to send to.')
 
         return parser
+
+    def _load_account_prefix(self, prefix):
+        response = self.client.get_all_accounts()
+        account_ids = response['result']['account_ids']
+        matching_ids = [
+            a_id for a_id in account_ids
+            if a_id.startswith(prefix)
+        ]
+        if len(matching_ids) == 0:
+            print('Could not find account starting with', prefix)
+            exit(1)
+        elif len(matching_ids) == 1:
+            account_id = matching_ids[0]
+            return response['result']['account_map'][account_id]
+        else:
+            print('Multiple matching matching ids: {}'.format(', '.join(matching_ids)))
+            exit(1)
 
     def start(self, offline=False, bg=False):
         if NETWORK == 'testnet':
@@ -141,51 +161,36 @@ class CommandLineInterface:
         elif NETWORK == 'mainnet':
             subprocess.Popen(['killall', '-v', 'full-service'])
 
-    def _load_account(self, prefix):
-        response = self.client.get_all_accounts()
-        account_ids = response['result']['account_ids']
-        matching_ids = [
-            a_id for a_id in account_ids
-            if a_id.startswith(prefix)
-        ]
-        if len(matching_ids) == 0:
-            print('Could not find account starting with', prefix)
-            exit(1)
-        elif len(matching_ids) == 1:
-            account_id = matching_ids[0]
-            return response['result']['account_map'][account_id]
-        else:
-            print('Multiple matching matching ids: {}'.format(', '.join(matching_ids)))
-            exit(1)
-
     def create(self, **args):
         response = self.client.create_account(**args)
         account = response['result']['account']
         account_id = account['account_id']
-        entropy = account['entropy']
-        filename = f'mobilecoin_secret_entropy_{account_id}.txt'
-        with open(filename, 'w') as f:
-            f.write(entropy)
-        print('Created a new account, "{}".'.format(args['name']))
-        print(f'Wrote account root entropy to {filename}')
+        print('Created a new account.')
+        print(account_id[:6], account['name'])
 
     def import_(self, **args):
-        self.client.import_account(**args)
+        response = self.client.import_account(**args)
+        account = response['result']['account']
+        account_id = account['account_id']
+        print('Imported account.')
+        print(account_id[:6], account['name'])
 
     def delete(self, account_id):
-        account = self._load_account(account_id)
+        account = self._load_account_prefix(account_id)
+        account_id = account['account_id']
 
         confirmation = input('\n'.join([
-            'This will delete all stored information for the account {},'.format(account['name']),
-            'account id {}'.format(account['account_id']),
+            'This will delete all stored information for the account "{}",'.format(account['name']),
+            'account id {}'.format(account_id[:6]),
             'You will lose access to the funds in this account unless you',
             'restore it from the root entropy. Continue? (Y/N) '
         ]))
         if confirmation.lower() not in ['y', 'yes']:
             print('Cancelled.')
-        else:
-            self.client.delete_account(account['account_id'])
-            print('Deleted.')
+            return
+
+        self.client.delete_account(account_id)
+        print('Deleted.')
 
     def list(self, **args):
         response = self.client.get_all_accounts(**args)
@@ -220,6 +225,26 @@ class CommandLineInterface:
 
     def history(self, account_id):
         pass
+
+    def show_secrets(self, account_id):
+        account = self._load_account_prefix(account_id)
+        account_id = account['account_id']
+
+        confirmation = input('\n'.join([
+            'You are about to view the secret keys for the account "{}",'.format(account['name']),
+            'account id {}'.format(account_id[:6]),
+            'Anyone who can see these keys can spend all the funds in your account. It is recommended to be',
+            'somewhere private and with no cameras. Continue? (Y/N) '
+        ]))
+        if confirmation.lower() not in ['y', 'yes']:
+            print('Cancelled.')
+            return
+
+        print()
+        print(account_id[:6], account['name'])
+        print('  Root Entropy:', account['entropy'])
+        print('  View Private Key:', account['account_key']['view_private_key'])
+        print('  Spend Private Key:', account['account_key']['spend_private_key'])
 
     def send(self, account_id, address, amount):
         amount = str(mob2pmob(amount))

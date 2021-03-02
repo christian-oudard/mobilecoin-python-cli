@@ -1,4 +1,3 @@
-from functools import lru_cache
 import http
 import json
 
@@ -66,13 +65,25 @@ class Client:
             "params": params,
         })
 
-    @lru_cache
     def get_all_accounts(self):
         return self._req({"method": "get_all_accounts"})
 
-    @lru_cache
-    def get_account(self):
-        return self._req({"method": "get_all_accounts"})
+    def get_account(self, account_id):
+        return self._req({
+            "method": "get_account",
+            "params": {
+                "account_id": account_id,
+            }
+        })
+
+    def update_account_name(self, account_id, name):
+        return self._req({
+            "method": "update_account_name",
+            "params": {
+                "account_id": account_id,
+                "name": name,
+            }
+        })
 
     def balance(self, account_id):
         return self._req({
@@ -90,7 +101,7 @@ class Client:
             }
         })
 
-    def transactions(self, account_id):
+    def get_all_txos_by_account(self, account_id):
         return self._req({
             "method": "get_all_txos_by_account",
             "params": {
