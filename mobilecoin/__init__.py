@@ -1,2 +1,2 @@
 from mobilecoin.cli import CommandLineInterface
-from mobilecoin.client import Client
+from mobilecoin.client import Client, WalletAPIError

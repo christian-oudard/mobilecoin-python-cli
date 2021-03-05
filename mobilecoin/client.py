@@ -7,6 +7,10 @@ import requests
 DEFAULT_URL = 'http://127.0.0.1:9090/wallet'
 
 
+class WalletAPIError(Exception):
+    pass
+
+
 class Client:
 
     def __init__(self, url=DEFAULT_URL, verbose=False):
@@ -22,21 +26,27 @@ class Client:
         try:
             r = requests.post(self.url, json=request_data)
         except requests.ConnectionError:
-            # print(f'Could not connect to server at {self.url}. Try running ./mobilecoin start')
+            print(f'Could not connect to server at {self.url}.')
             raise
 
         try:
             response_data = r.json()
         except ValueError:
-            print('API Error:', r.text)
-            exit(1)
+            print('API returned invalid JSON:', r.text)
+            raise
 
         if self.verbose:
             print(r.status_code, http.client.responses[r.status_code])
             print(json.dumps(response_data, indent=4))
             print()
 
-        return response_data
+        # Check for errors and unwrap result.
+        try:
+            result = response_data['result']
+        except KeyError:
+            raise WalletAPIError(json.dumps(response_data, indent=4))
+
+        return result
 
     def _req_v1(self, request_data):
         return self._req(request_data)
@@ -49,71 +59,72 @@ class Client:
         }
         return self._req({**default_params, **request_data})
 
-    def create_account(self, name, block=None):
+    def create_account(self, name=None, block=None):
         params = {"name": name}
         if block is not None:
             params["first_block_index"] = str(int(block))
-        return self._req_v2({
+        r = self._req_v2({
             "method": "create_account",
-            "params": params,
+            "params": params
         })
+        return r['account']
 
-    def import_account(self, name, entropy, block=None):
+    def import_account(self, entropy, name=None, block=None):
         params = {
             "entropy": entropy,
-            "name": name
         }
+        if name is not None:
+            params["name"] = name
         if block is not None:
             params["first_block_index"] = str(int(block))
 
-        return self._req_v2({
+        r = self._req_v2({
             "method": "import_account",
-            "params": params,
+            "params": params
         })
+        return r['account']
 
     def get_all_accounts(self):
-        return self._req_v2({"method": "get_all_accounts"})
+        r = self._req_v2({"method": "get_all_accounts"})
+        return r['account_map']
 
     def get_account(self, account_id):
-        return self._req_v2({
+        r = self._req_v2({
             "method": "get_account",
-            "params": {
-                "account_id": account_id,
-            }
+            "params": {"account_id": account_id}
         })
+        return r['account']
 
     def update_account_name(self, account_id, name):
-        return self._req_v2({
+        r = self._req_v2({
             "method": "update_account_name",
             "params": {
                 "account_id": account_id,
                 "name": name,
             }
         })
-
-    def balance(self, account_id):
-        return self._req_v2({
-            "method": "get_balance_for_account",
-            "params": {
-                "account_id": account_id,
-            }
-        })
+        return r['account']
 
     def delete_account(self, account_id):
         return self._req_v2({
             "method": "delete_account",
-            "params": {
-                "account_id": account_id,
-            }
+            "params": {"account_id": account_id}
         })
+
+    def export_account_secrets(self, account_id):
+        r = self._req_v2({
+            "method": "export_account_secrets",
+            "params": {"account_id": account_id}
+        })
+        return r['account_secrets']
 
     def get_all_txos_by_account(self, account_id):
         return self._req_v2({
             "method": "get_all_txos_by_account",
-            "params": {
-                "account_id": account_id
-            }
+            "params": {"account_id": account_id}
         })
+
+    ####
 
     def send_transaction(self, from_account_id, amount, to_address):
         amount = str(mob2pmob(Decimal(amount)))
@@ -123,6 +134,14 @@ class Client:
                 "account_id": from_account_id,
                 "value": amount,
                 "recipient_public_address": to_address,
+            }
+        })
+
+    def get_balance_for_account(self, account_id):
+        return self._req_v2({
+            "method": "get_balance_for_account",
+            "params": {
+                "account_id": account_id,
             }
         })
 

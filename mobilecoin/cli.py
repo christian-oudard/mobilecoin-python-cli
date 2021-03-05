@@ -1,8 +1,11 @@
 import argparse
 from decimal import Decimal
+import json
 import os
 from pathlib import Path
 import subprocess
+
+from mnemonic import Mnemonic
 
 from mobilecoin.client import (
     Client,
@@ -52,28 +55,23 @@ class CommandLineInterface:
         self.stop_args = subparsers.add_parser('stop', help='Stop the local MobileCoin wallet server.')
 
         self.create_args = subparsers.add_parser('create', help='Create a new account.')
-        self.create_args.add_argument('name', help='Account name.')
+        self.create_args.add_argument('-n', '--name', help='Account name.')
         self.create_args.add_argument('-b', '--block', type=int,
                                       help='Block index at which to start the account. No transactions before this block will be loaded.')
 
         self.import_args = subparsers.add_parser('import', help='Import an account.')
+        self.import_args.add_argument('seed', help='Account seed phrase, seed file, or root entropy hex.')
+        self.import_args.add_argument('-n', '--name', help='Account name.')
         self.import_args.add_argument('-b', '--block', type=int,
                                       help='Block index at which to start the account. No transactions before this block will be loaded.')
-        self.import_args.add_argument('-f', '--file',
-                                      help='A file containing account root entropy.')
-        self.import_args.add_argument('name', help='Account name.')
-        self.import_args.add_argument('entropy', help='Secret root entropy.', nargs='?')
 
         self.delete_args = subparsers.add_parser('delete', help='Delete an account from local storage.')
         self.delete_args.add_argument('account_id', help='Account ID code.')
 
         self.list_args = subparsers.add_parser('list', help='List accounts.')
 
-        self.show_secrets_args = subparsers.add_parser('show_secrets', help='Show account secrets.')
-        self.show_secrets_args.add_argument('account_id', help='Account ID code.')
-
-        self.export_entropy_args = subparsers.add_parser('export_entropy', help='Export account entropy to file.')
-        self.export_entropy_args.add_argument('account_id', help='Account ID code.')
+        self.export_args = subparsers.add_parser('export', help='Export seed phrase.')
+        self.export_args.add_argument('account_id', help='Account ID code.')
 
         self.transactions_args = subparsers.add_parser('transactions', help='List account transactions.')
         self.transactions_args.add_argument('account_id', help='Account ID code.', nargs='?')
@@ -84,10 +82,9 @@ class CommandLineInterface:
         self.send_args.add_argument('to_address', help='Address to send to.')
 
     def _load_account_prefix(self, prefix):
-        response = self.client.get_all_accounts()
-        account_ids = response['result']['account_ids']
+        accounts = self.client.get_all_accounts()
         matching_ids = [
-            a_id for a_id in account_ids
+            a_id for a_id in accounts.keys()
             if a_id.startswith(prefix)
         ]
         if len(matching_ids) == 0:
@@ -95,7 +92,7 @@ class CommandLineInterface:
             exit(1)
         elif len(matching_ids) == 1:
             account_id = matching_ids[0]
-            return response['result']['account_map'][account_id]
+            return accounts[account_id]
         else:
             print('Multiple matching matching ids: {}'.format(', '.join(matching_ids)))
             exit(1)
@@ -164,48 +161,67 @@ class CommandLineInterface:
             subprocess.Popen(['killall', '-v', 'full-service'])
 
     def create(self, **args):
-        response = self.client.create_account(**args)
-        account = response['result']['account']
+        account = self.client.create_account(**args)
         account_id = account['account_id']
         print('Created a new account.')
         print(account_id[:6], account['name'])
 
-    def import_(self, name, entropy=None, **args):
-        filename = args.pop('file')
-        if entropy is None:
-            if filename is None:
-                print('Must specify either entropy or an entropy file.')
-                self.import_args.print_help()
-                exit(1)
-
-            with open(filename) as f:
-                entropy = f.read().strip().lower()
-
-        response = self.client.import_account(name, entropy, **args)
-        account = response['result']['account']
+    def import_(self, seed, **args):
+        entropy, block = _load_import(seed)
+        if args['block'] is None and block is not None:
+            args['block'] = block
+        account = self.client.import_account(entropy, **args)
         account_id = account['account_id']
         print('Imported account.')
         print(account_id[:6], account['name'])
 
+    def export(self, account_id):
+        account = self._load_account_prefix(account_id)
+        account_id = account['account_id']
+        response = self.client.get_balance_for_account(account_id)
+        balance = response['balance']
+
+        print('You are about to export the seed phrase for this account:')
+        print()
+        _print_account(account, balance)
+        print()
+        print('Anyone who has access to the seed phrase can spend all the')
+        print('funds in the account. Keep the exported file safe and private!')
+        if not confirm('Really write account seed phrase to a file? (Y/N) '):
+            print('Cancelled.')
+            return
+
+        secrets = self.client.export_account_secrets(account_id)
+        filename = 'mobilecoin_seed_phrase_{}.json'.format(account_id[:16])
+        _save_export(account, secrets, filename)
+        print(f'Wrote {filename}.')
+
     def delete(self, account_id):
         account = self._load_account_prefix(account_id)
         account_id = account['account_id']
+        response = self.client.get_balance_for_account(account_id)
+        balance = response['balance']
 
-        if not confirm('\n'.join([
-            'This will delete all stored information for the account "{}",'.format(account['name']),
-            'account id {}'.format(account_id[:6]),
-            'You will lose access to the funds in this account unless you',
-            'restore it from the root entropy. Continue? (Y/N) '
-        ])):
-            print('Cancelled.')
-            return
+        amount = pmob2mob(balance['unspent_pmob'])
+        if balance['is_synced'] is True and amount == 0:
+            print('Account {} has 0 MOB.'.format(account_id[:6]))
+        else:
+            print('You are about to delete this account:')
+            print()
+            _print_account(account, balance)
+            print()
+            print('You will lose access to the funds in this account unless you')
+            print('restore it from the seed phrase.')
+            if not confirm('Continue? (Y/N) '):
+                print('Cancelled.')
+                return
 
         self.client.delete_account(account_id)
         print('Deleted.')
 
     def list(self, **args):
-        response = self.client.get_all_accounts(**args)
-        accounts = response['result']['account_map']
+        accounts = self.client.get_all_accounts(**args)
+
         if len(accounts) == 0:
             print('No accounts.')
             return
@@ -213,73 +229,38 @@ class CommandLineInterface:
         account_list = []
         for account_id, account in accounts.items():
             # Get balance.
-            response = self.client.balance(account['account_id'])
-            balance = response['result']['balance']
+            response = self.client.get_balance_for_account(account_id)
+            balance = response['balance']
             account_list.append((account_id, account, balance))
 
         for (account_id, account, balance) in account_list:
-            total_blocks = int(balance['network_block_count'])
+            total_blocks = int(balance['network_block_index'])
             offline = (total_blocks == 0)
             if offline:
-                total_blocks = balance['local_block_count']
-
+                total_blocks = balance['local_block_index']
             print()
-            print(account_id[:6], account['name'])
-            print('  address', account['main_address'])
-            print('  {:.4f} MOB ({}/{} blocks synced) {}'.format(
-                pmob2mob(balance['unspent_pmob']),
-                balance['account_block_count'],
-                total_blocks,
-                ' [offline]' if offline else '',
-            ))
+            _print_account(account, balance)
 
         print()
 
     def history(self, account_id):
         pass
 
-    def show_secrets(self, account_id):
-        account = self._load_account_prefix(account_id)
-        account_id = account['account_id']
-
-        if not confirm('\n'.join([
-            'You are about to view the secret keys for the account "{}",'.format(account['name']),
-            'account id {}'.format(account_id[:6]),
-            'Anyone who can see these keys can spend all the funds in your account. It is recommended to be',
-            'somewhere private and with no cameras. Continue? (Y/N) '
-        ])):
-            print('Cancelled.')
-            return
-
-        print()
-        print(account_id[:6], account['name'])
-        print('  Root Entropy:', account['entropy'])
-        print('  View Private Key:', account['account_key']['view_private_key'])
-        print('  Spend Private Key:', account['account_key']['spend_private_key'])
-
-    def export_entropy(self, account_id):
-        if not confirm('Really write secret entropy to a file? (Y/N) '):
-            print('Cancelled.')
-            return
-
-        account = self._load_account_prefix(account_id)
-        account_id = account['account_id']
-
-        filename = f'mobilecoin_secret_entropy_{account_id}.txt'
-        with open(filename, 'w') as f:
-            f.write(account['entropy'])
-        print(f'Wrote {filename}.')
-
     def send(self, from_account_id, amount, to_address):
         account = self._load_account_prefix(from_account_id)
         from_account_id = account['account_id']
         amount = Decimal(amount)
 
-        if not confirm('\n'.join([
-            'Sending {:.4f} MOB from account {} {}'.format(amount, from_account_id[:6], account['name']),
-            'to address {}.'.format(to_address),
-            'Confirm? (Y/N) '
-        ])):
+        print('\n'.join(
+            'Sending {:.4f} MOB from account {} {}',
+            'to address {}.'
+        ).format(
+            amount,
+            from_account_id[:6],
+            account['name'],
+            to_address,
+        ))
+        if not confirm('Confirm? (Y/N) '):
             print('Cancelled.')
             return
 
@@ -296,3 +277,61 @@ class CommandLineInterface:
 def confirm(message):
     confirmation = input(message)
     return confirmation.lower() in ['y', 'yes']
+
+
+def _print_account(account, balance):
+    account_id = account['account_id']
+
+    total_blocks = int(balance['network_block_index'])
+    offline = (total_blocks == 0)
+    if offline:
+        total_blocks = balance['local_block_index']
+
+    print(account_id[:6], account['name'])
+    print('  address', account['main_address'])
+    print('  {:.4f} MOB ({}/{} blocks synced) {}'.format(
+        pmob2mob(balance['unspent_pmob']),
+        balance['account_block_index'],
+        total_blocks,
+        ' [offline]' if offline else '',
+    ))
+
+
+def _load_import(seed):
+    # Try to use it as hexadecimal root entropy.
+    try:
+        b = bytes.fromhex(seed)
+        if len(b) == 32:
+            entropy = b.hex()
+            return entropy, None
+    except ValueError:
+        pass
+
+    # Try to interpret it as a BIP39 mnemonic.
+    try:
+        entropy = Mnemonic('english').to_entropy(seed).hex()
+        return entropy, None
+    except (ValueError, LookupError):
+        pass
+
+    # Last chance, try to open it as a JSON filename.
+    with open(seed) as f:
+        data = json.load(f)
+    return data['root_entropy'], data['first_block_index']
+
+
+def _save_export(account, secrets, filename):
+    entropy = secrets['entropy']
+    seed_phrase = Mnemonic('english').to_mnemonic(bytes.fromhex(entropy))
+
+    export_data = {
+        "seed_phrase": seed_phrase,
+        "root_entropy": entropy,
+        "account_id": account['account_id'],
+        "account_name": account['name'],
+        "account_key": secrets['account_key'],
+        "first_block_index": account['first_block_index'],
+    }
+    with open(filename, 'w') as f:
+        json.dump(export_data, f, indent=4)
+        f.write('\n')
