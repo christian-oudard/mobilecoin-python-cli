@@ -12,10 +12,7 @@ from mobilecoin.client import (
     pmob2mob,
 )
 
-NETWORK = 'testnet'
-assert NETWORK in ['testnet', 'mainnet']
-MC_DATA = Path.home() / '.mobilecoin' / NETWORK
-LOG_LOCATION = MC_DATA / 'wallet_server_log.txt'
+config = json.loads(os.environ['MOBILECOIN_CONFIG'])
 
 
 class CommandLineInterface:
@@ -98,73 +95,54 @@ class CommandLineInterface:
             exit(1)
 
     def start(self, offline=False, bg=False):
-        if NETWORK == 'testnet':
-            wallet_server_command = ['./full-service-testnet']
-        elif NETWORK == 'mainnet':
-            wallet_server_command = ['./full-service-mainnet']
-
-        wallet_server_command += [
-            '--wallet-db', str(MC_DATA / 'wallet-db/wallet.db'),
-            '--ledger-db', str(MC_DATA / 'ledger-db'),
+        wallet_server_command = [
+            config['executable'],
+            '--ledger-db', config['ledger-db'],
+            '--wallet-db', config['wallet-db'],
         ]
         if offline:
-            wallet_server_command += [
-                '--offline',
-            ]
+            wallet_server_command += ['--offline']
         else:
-            if NETWORK == 'testnet':
-                wallet_server_command += [
-                    '--peer mc://node1.test.mobilecoin.com/',
-                    '--peer mc://node2.test.mobilecoin.com/',
-                    '--tx-source-url https://s3-us-west-1.amazonaws.com/mobilecoin.chain/node1.test.mobilecoin.com/',
-                    '--tx-source-url https://s3-us-west-1.amazonaws.com/mobilecoin.chain/node2.test.mobilecoin.com/',
-                ]
-            elif NETWORK == 'mainnet':
-                wallet_server_command += [
-                    '--peer', 'mc://node1.prod.mobilecoinww.com/',
-                    '--peer', 'mc://node2.prod.mobilecoinww.com/',
-                    '--tx-source-url', 'https://ledger.mobilecoinww.com/node1.prod.mobilecoinww.com/',
-                    '--tx-source-url', 'https://ledger.mobilecoinww.com/node2.prod.mobilecoinww.com/',
-                ]
+            for peer in config['peer']:
+                wallet_server_command += ['--peer', peer]
+            for tx_source_url in config['tx-source-url']:
+                wallet_server_command += ['--tx-source-url', tx_source_url]
+
+        ingest_enclave = config.get('fog-ingest-enclave-css')
+        if ingest_enclave is not None:
+            wallet_server_command += ['--fog-ingest-enclave-css', ingest_enclave]
+
         if bg:
             wallet_server_command += [
-                '>', str(LOG_LOCATION), '2>&1'
+                '>', config['logfile'], '2>&1'
             ]
-
-        if NETWORK == 'testnet':
-            print('Starting TestNet wallet server...')
-        elif NETWORK == 'mainnet':
-            print('Starting MobileCoin wallet server...')
 
         if self.verbose:
             print(' '.join(wallet_server_command))
 
-        MC_DATA.mkdir(parents=True, exist_ok=True)
-        (MC_DATA / 'ledger-db').mkdir(exist_ok=True)
-        (MC_DATA / 'wallet-db').mkdir(exist_ok=True)
+        print('Starting {}...'.format(Path(config['executable']).name))
 
-        os.environ['RUST_LOG'] = 'info'
-        os.environ['mc_ledger_sync'] = 'info'
+        Path(config['ledger-db']).mkdir(parents=True, exist_ok=True)
+        Path(config['wallet-db']).parent.mkdir(parents=True, exist_ok=True)
+
         if bg:
             subprocess.Popen(' '.join(wallet_server_command), shell=True)
-            print('Started, view log at {}.'.format(LOG_LOCATION))
-            print('Stop server with "mobilecoin stop".')
+            print('Started, view log at {}.'.format(config['logfile']))
+            print('Stop server with "mobcli stop".')
         else:
             subprocess.run(' '.join(wallet_server_command), shell=True)
 
     def stop(self):
         if self.verbose:
             print('Stopping MobileCoin wallet server...')
-        if NETWORK == 'testnet':
-            subprocess.Popen(['killall', '-v', 'full-service-testnet'])
-        elif NETWORK == 'mainnet':
-            subprocess.Popen(['killall', '-v', 'full-service'])
+        subprocess.Popen(['killall', '-v', config['executable']])
 
     def create(self, **args):
         account = self.client.create_account(**args)
-        account_id = account['account_id']
         print('Created a new account.')
-        print(account_id[:6], account['name'])
+        print()
+        _print_account(account)
+        print()
 
     def import_(self, seed, **args):
         entropy, block = _load_import(seed)
@@ -279,22 +257,23 @@ def confirm(message):
     return confirmation.lower() in ['y', 'yes']
 
 
-def _print_account(account, balance):
+def _print_account(account, balance=None):
     account_id = account['account_id']
-
-    total_blocks = int(balance['network_block_index'])
-    offline = (total_blocks == 0)
-    if offline:
-        total_blocks = balance['local_block_index']
 
     print(account_id[:6], account['name'])
     print('  address', account['main_address'])
-    print('  {:.4f} MOB ({}/{} blocks synced) {}'.format(
-        pmob2mob(balance['unspent_pmob']),
-        balance['account_block_index'],
-        total_blocks,
-        ' [offline]' if offline else '',
-    ))
+
+    if balance is not None:
+        total_blocks = int(balance['network_block_index'])
+        offline = (total_blocks == 0)
+        if offline:
+            total_blocks = balance['local_block_index']
+        print('  {:.4f} MOB ({}/{} blocks synced) {}'.format(
+            pmob2mob(balance['unspent_pmob']),
+            balance['account_block_index'],
+            total_blocks,
+            ' [offline]' if offline else '',
+        ))
 
 
 def _load_import(seed):
