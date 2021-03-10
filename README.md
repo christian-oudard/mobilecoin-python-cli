@@ -1,4 +1,4 @@
-# mobilecoin-python-cli
+# MobileCoin command-line interface
 Command line interface and client library for MobileCoin full-service node.
 
 
@@ -14,10 +14,8 @@ Check that it is installed.
 mobcli -h
 ```
 
-
 ## Start the server
 
-Go to a folder which has an executable named `full-service-testnet` and run:
 ```shell
 mobcli start
 ```
@@ -28,6 +26,7 @@ mobcli start
 - start
 - stop
 - create
+- rename
 - import
 - export
 - delete

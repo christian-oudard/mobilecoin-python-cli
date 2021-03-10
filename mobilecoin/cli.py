@@ -56,6 +56,10 @@ class CommandLineInterface:
         self.create_args.add_argument('-b', '--block', type=int,
                                       help='Block index at which to start the account. No transactions before this block will be loaded.')
 
+        self.rename_args = subparsers.add_parser('rename', help='Change account name.')
+        self.rename_args.add_argument('account_id', help='Account ID code.')
+        self.rename_args.add_argument('name', help='New account name.')
+
         self.import_args = subparsers.add_parser('import', help='Import an account.')
         self.import_args.add_argument('seed', help='Account seed phrase, seed file, or root entropy hex.')
         self.import_args.add_argument('-n', '--name', help='Account name.')
@@ -140,6 +144,19 @@ class CommandLineInterface:
     def create(self, **args):
         account = self.client.create_account(**args)
         print('Created a new account.')
+        print()
+        _print_account(account)
+        print()
+
+    def rename(self, account_id, name):
+        account = self._load_account_prefix(account_id)
+        old_name = account['name']
+        account_id = account['account_id']
+        account = self.client.update_account_name(account_id, name)
+        print('Renamed account from "{}" to "{}".'.format(
+            old_name,
+            account['name'],
+        ))
         print()
         _print_account(account)
         print()
