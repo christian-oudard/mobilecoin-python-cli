@@ -14,6 +14,25 @@ Check that it is installed.
 mobcli -h
 ```
 
+## Set up environment variables.
+
+Copy the config file to your home directory.
+```shell
+cp mc_env.sh ~/.mc_env.sh
+```
+
+Add the following lines to your .bashrc:
+```shell
+if [ -f "$HOME/.env" ]; then
+    source "$HOME/.mc_env.sh"
+fi
+```
+
+The environment variables file specifies to connect to the test network by default, but
+you can change it to connect to the main network if you know what you're doing, and are
+confident you will not lose actual funds.
+
+
 ## Start the server
 
 ```shell
