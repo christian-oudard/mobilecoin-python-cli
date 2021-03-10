@@ -118,11 +118,20 @@ class Client:
         })
         return r['account_secrets']
 
-    def get_all_txos_by_account(self, account_id):
+    def get_all_txos_for_account(self, account_id):
         return self._req_v2({
             "method": "get_all_txos_by_account",
             "params": {"account_id": account_id}
         })
+
+    def get_balance_for_account(self, account_id):
+        r = self._req_v2({
+            "method": "get_balance_for_account",
+            "params": {
+                "account_id": account_id,
+            }
+        })
+        return r['balance']
 
     ####
 
@@ -134,14 +143,6 @@ class Client:
                 "account_id": from_account_id,
                 "value": amount,
                 "recipient_public_address": to_address,
-            }
-        })
-
-    def get_balance_for_account(self, account_id):
-        return self._req_v2({
-            "method": "get_balance_for_account",
-            "params": {
-                "account_id": account_id,
             }
         })
 

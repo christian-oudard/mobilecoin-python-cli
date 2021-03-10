@@ -65,16 +65,16 @@ class CommandLineInterface:
         self.import_args.add_argument('-b', '--block', type=int,
                                       help='Block index at which to start the account. No transactions before this block will be loaded.')
 
+        self.export_args = subparsers.add_parser('export', help='Export seed phrase.')
+        self.export_args.add_argument('account_id', help='Account ID code.')
+
         self.delete_args = subparsers.add_parser('delete', help='Delete an account from local storage.')
         self.delete_args.add_argument('account_id', help='Account ID code.')
 
         self.list_args = subparsers.add_parser('list', help='List accounts.')
 
-        self.export_args = subparsers.add_parser('export', help='Export seed phrase.')
-        self.export_args.add_argument('account_id', help='Account ID code.')
-
-        self.transactions_args = subparsers.add_parser('transactions', help='List account transactions.')
-        self.transactions_args.add_argument('account_id', help='Account ID code.', nargs='?')
+        self.history_args = subparsers.add_parser('history', help='Show account transaction history.')
+        self.history_args.add_argument('account_id', help='Account ID code.')
 
         self.send_args = subparsers.add_parser('send', help='Send a transaction.')
         self.send_args.add_argument('from_account_id', help='Account ID to send from.')
@@ -104,7 +104,7 @@ class CommandLineInterface:
             wallet_server_command = ['./full-service-mainnet']
 
         wallet_server_command += [
-            '--wallet-db', str(MC_DATA / 'wallet-db/encrypted-wallet.db'),
+            '--wallet-db', str(MC_DATA / 'wallet-db/wallet.db'),
             '--ledger-db', str(MC_DATA / 'ledger-db'),
         ]
         if offline:
@@ -172,14 +172,17 @@ class CommandLineInterface:
             args['block'] = block
         account = self.client.import_account(entropy, **args)
         account_id = account['account_id']
+        balance = self.client.get_balance_for_account(account_id)
+
         print('Imported account.')
-        print(account_id[:6], account['name'])
+        print()
+        _print_account(account, balance)
+        print()
 
     def export(self, account_id):
         account = self._load_account_prefix(account_id)
         account_id = account['account_id']
-        response = self.client.get_balance_for_account(account_id)
-        balance = response['balance']
+        balance = self.client.get_balance_for_account(account_id)
 
         print('You are about to export the seed phrase for this account:')
         print()
@@ -199,8 +202,7 @@ class CommandLineInterface:
     def delete(self, account_id):
         account = self._load_account_prefix(account_id)
         account_id = account['account_id']
-        response = self.client.get_balance_for_account(account_id)
-        balance = response['balance']
+        balance = self.client.get_balance_for_account(account_id)
 
         amount = pmob2mob(balance['unspent_pmob'])
         if balance['is_synced'] is True and amount == 0:
@@ -228,9 +230,7 @@ class CommandLineInterface:
 
         account_list = []
         for account_id, account in accounts.items():
-            # Get balance.
-            response = self.client.get_balance_for_account(account_id)
-            balance = response['balance']
+            balance = self.client.get_balance_for_account(account_id)
             account_list.append((account_id, account, balance))
 
         for (account_id, account, balance) in account_list:

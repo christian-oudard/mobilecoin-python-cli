@@ -8,7 +8,7 @@ def main():
     # c = Client(verbose=True)
     c = Client(verbose=False)
 
-    # source_wallet_entropy = sys.argv[1]
+    source_wallet_entropy = sys.argv[1]
 
     # Start and end with an empty wallet.
     check_wallet_empty(c)
