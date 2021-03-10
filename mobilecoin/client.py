@@ -119,10 +119,11 @@ class Client:
         return r['account_secrets']
 
     def get_all_txos_for_account(self, account_id):
-        return self._req_v2({
-            "method": "get_all_txos_by_account",
+        r = self._req_v2({
+            "method": "get_all_txos_for_account",
             "params": {"account_id": account_id}
         })
+        return r['txo_map']
 
     def get_balance_for_account(self, account_id):
         r = self._req_v2({

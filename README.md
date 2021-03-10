@@ -21,3 +21,15 @@ Go to a folder which has an executable named `full-service-testnet` and run:
 ```shell
 mobcli start
 ```
+
+
+## List of commands
+
+- start
+- stop
+- create
+- import
+- export
+- delete
+- list
+- send
