@@ -11,4 +11,7 @@ setup(
     url='https://github.com/christian-oudard/mobilecoin-python-cli',
     packages=['mobilecoin'],
     scripts=['bin/mobcli'],
+    install_requires=[
+        'mnemonic',
+    ],
 )
