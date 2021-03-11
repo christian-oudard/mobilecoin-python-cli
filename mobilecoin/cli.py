@@ -10,7 +10,9 @@ from mnemonic import Mnemonic
 from mobilecoin.client import (
     Client,
     pmob2mob,
+    TRANSACTION_FEE,
 )
+
 
 config = json.loads(os.environ['MOBILECOIN_CONFIG'])
 
@@ -78,8 +80,8 @@ class CommandLineInterface:
         self.history_args.add_argument('account_id', help='Account ID code.')
 
         self.send_args = subparsers.add_parser('send', help='Send a transaction.')
-        self.send_args.add_argument('from_account_id', help='Account ID to send from.')
-        self.send_args.add_argument('amount', help='Amount of MOB to send.', type=float)
+        self.send_args.add_argument('account_id', help='Account ID to send from.')
+        self.send_args.add_argument('amount', help='Amount of MOB to send.')
         self.send_args.add_argument('to_address', help='Address to send to.')
 
     def _load_account_prefix(self, prefix):
@@ -241,26 +243,48 @@ class CommandLineInterface:
     def history(self, account_id):
         pass
 
-    def send(self, from_account_id, amount, to_address):
-        account = self._load_account_prefix(from_account_id)
-        from_account_id = account['account_id']
-        amount = Decimal(amount)
+    def send(self, account_id, amount, to_address):
+        account = self._load_account_prefix(account_id)
+        account_id = account['account_id']
+        balance = self.client.get_balance_for_account(account_id)
+        unspent = pmob2mob(balance['unspent_pmob'])
 
-        print('\n'.join(
+        if amount == "all":
+            amount = unspent - TRANSACTION_FEE
+            total_amount = unspent
+        else:
+            amount = Decimal(amount)
+            total_amount = amount + TRANSACTION_FEE
+
+        print('\n'.join([
             'Sending {:.4f} MOB from account {} {}',
-            'to address {}.'
-        ).format(
+            'to address {}.',
+            'Fee is {:.4f} MOB, for a total amount of {:.4f} MOB',
+        ]).format(
             amount,
-            from_account_id[:6],
+            account_id[:6],
             account['name'],
             to_address,
+            TRANSACTION_FEE,
+            total_amount,
         ))
+
+        if total_amount > unspent:
+            print('\n'.join([
+                'Cannot send this transaction, because the account only',
+                'contains {:.4f} MOB. Try sending all funds by entering amount as "all".',
+            ]).format(unspent))
+            return
+
         if not confirm('Confirm? (Y/N) '):
             print('Cancelled.')
             return
 
-        self.client.send_transaction(from_account_id, amount, to_address)
-        print('Sent.')
+        transaction_log = self.client.build_and_submit_transaction(account_id, amount, to_address)
+        print('Sent {:.4f} MOB, with a transaction fee of {:.4f} MOB'.format(
+            pmob2mob(transaction_log['value_pmob']),
+            pmob2mob(transaction_log['fee_pmob']),
+        ))
 
     def prepare():
         pass
