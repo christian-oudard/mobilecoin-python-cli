@@ -66,7 +66,7 @@ class Client:
         })
         return r['account']
 
-    def import_account(self, entropy, name=None, block=None):
+    def import_account(self, entropy, name=None, block=None, fog_keys=None):
         params = {
             "entropy": entropy,
         }
@@ -74,7 +74,8 @@ class Client:
             params["name"] = name
         if block is not None:
             params["first_block_index"] = str(int(block))
-
+        if fog_keys is not None:
+            params.update(fog_keys)
         r = self._req({
             "method": "import_account",
             "params": params

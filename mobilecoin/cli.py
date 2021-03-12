@@ -164,10 +164,10 @@ class CommandLineInterface:
         print()
 
     def import_(self, seed, **args):
-        entropy, block = _load_import(seed)
+        entropy, block, fog_keys = _load_import(seed)
         if args['block'] is None and block is not None:
             args['block'] = block
-        account = self.client.import_account(entropy, **args)
+        account = self.client.import_account(entropy, fog_keys=fog_keys, **args)
         account_id = account['account_id']
         balance = self.client.get_balance_for_account(account_id)
 
@@ -193,8 +193,13 @@ class CommandLineInterface:
 
         secrets = self.client.export_account_secrets(account_id)
         filename = 'mobilecoin_seed_phrase_{}.json'.format(account_id[:16])
-        _save_export(account, secrets, filename)
-        print(f'Wrote {filename}.')
+        try:
+            _save_export(account, secrets, filename)
+        except OSError as e:
+            print('Could not write file: {}'.format(e))
+            exit(1)
+        else:
+            print(f'Wrote {filename}.')
 
     def delete(self, account_id):
         account = self._load_account_prefix(account_id)
@@ -323,21 +328,35 @@ def _load_import(seed):
         b = bytes.fromhex(seed)
         if len(b) == 32:
             entropy = b.hex()
-            return entropy, None
+            return entropy, None, None
     except ValueError:
         pass
 
     # Try to interpret it as a BIP39 mnemonic.
     try:
         entropy = Mnemonic('english').to_entropy(seed).hex()
-        return entropy, None
+        return entropy, None, None
     except (ValueError, LookupError):
         pass
 
-    # Last chance, try to open it as a JSON filename.
+    # Try to open it as a JSON filename.
     with open(seed) as f:
         data = json.load(f)
-    return data['root_entropy'], data['first_block_index']
+        fog_keys = {}
+        for field in [
+            'fog_report_url',
+            'fog_report_id',
+            'fog_authority_spki',
+        ]:
+            value = data['account_key'].get(field)
+            if value is not None:
+                fog_keys[field] = value
+
+    return (
+        data['root_entropy'],
+        data.get('first_block_index'),
+        fog_keys,
+    )
 
 
 def _save_export(account, secrets, filename):
@@ -352,6 +371,11 @@ def _save_export(account, secrets, filename):
         "account_key": secrets['account_key'],
         "first_block_index": account['first_block_index'],
     }
-    with open(filename, 'w') as f:
+
+    path = Path(filename)
+    if path.exists():
+        raise OSError('File exists.')
+
+    with path.open('w') as f:
         json.dump(export_data, f, indent=4)
         f.write('\n')

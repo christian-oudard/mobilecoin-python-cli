@@ -3,7 +3,7 @@
 from distutils.core import setup
 
 setup(
-    name='mobilecoin-cli',
+    name='mobilecoin',
     version='0.1',
     description='Command line client for MobileCoin.',
     author='Christian Oudard',
