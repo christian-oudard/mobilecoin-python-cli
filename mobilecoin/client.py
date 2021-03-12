@@ -103,9 +103,9 @@ class Client:
         })
         return r['account']
 
-    def delete_account(self, account_id):
+    def remove_account(self, account_id):
         return self._req({
-            "method": "delete_account",
+            "method": "remove_account",
             "params": {"account_id": account_id}
         })
 

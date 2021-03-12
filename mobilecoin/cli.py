@@ -71,8 +71,8 @@ class CommandLineInterface:
         self.export_args = subparsers.add_parser('export', help='Export seed phrase.')
         self.export_args.add_argument('account_id', help='Account ID code.')
 
-        self.delete_args = subparsers.add_parser('delete', help='Delete an account from local storage.')
-        self.delete_args.add_argument('account_id', help='Account ID code.')
+        self.remove_args = subparsers.add_parser('remove', help='Remove an account from local storage.')
+        self.remove_args.add_argument('account_id', help='Account ID code.')
 
         self.list_args = subparsers.add_parser('list', help='List accounts.')
 
@@ -201,7 +201,7 @@ class CommandLineInterface:
         else:
             print(f'Wrote {filename}.')
 
-    def delete(self, account_id):
+    def remove(self, account_id):
         account = self._load_account_prefix(account_id)
         account_id = account['account_id']
         balance = self.client.get_balance_for_account(account_id)
@@ -210,7 +210,7 @@ class CommandLineInterface:
         if balance['is_synced'] is True and amount == 0:
             print('Account {} has 0 MOB.'.format(account_id[:6]))
         else:
-            print('You are about to delete this account:')
+            print('You are about to remove this account:')
             print()
             _print_account(account, balance)
             print()
@@ -220,8 +220,8 @@ class CommandLineInterface:
                 print('Cancelled.')
                 return
 
-        self.client.delete_account(account_id)
-        print('Deleted.')
+        self.client.remove_account(account_id)
+        print('Removed.')
 
     def list(self, **args):
         accounts = self.client.get_all_accounts(**args)
