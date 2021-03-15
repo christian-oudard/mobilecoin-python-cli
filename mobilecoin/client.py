@@ -144,6 +144,18 @@ class Client:
         })
         return r['transaction_log']
 
+    def build_transaction(self, account_id, amount, to_address):
+        amount = str(mob2pmob(Decimal(amount)))
+        r = self._req({
+            "method": "build_transaction",
+            "params": {
+                "account_id": account_id,
+                "value_pmob": amount,
+                "recipient_public_address": to_address,
+            }
+        })
+        return r['tx_proposal']
+
 
 def mob2pmob(x):
     """ Convert from MOB to picoMOB. """

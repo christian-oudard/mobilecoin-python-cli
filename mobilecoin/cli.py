@@ -80,6 +80,7 @@ class CommandLineInterface:
         self.history_args.add_argument('account_id', help='Account ID code.')
 
         self.send_args = subparsers.add_parser('send', help='Send a transaction.')
+        self.send_args.add_argument('--build-only', action='store_true', help='Just build the transaction, do not submit it.')
         self.send_args.add_argument('account_id', help='Account ID to send from.')
         self.send_args.add_argument('amount', help='Amount of MOB to send.')
         self.send_args.add_argument('to_address', help='Address to send to.')
@@ -248,7 +249,7 @@ class CommandLineInterface:
     def history(self, account_id):
         pass
 
-    def send(self, account_id, amount, to_address):
+    def send(self, account_id, amount, to_address, build_only=False):
         account = self._load_account_prefix(account_id)
         account_id = account['account_id']
         balance = self.client.get_balance_for_account(account_id)
@@ -261,11 +262,17 @@ class CommandLineInterface:
             amount = Decimal(amount)
             total_amount = amount + TRANSACTION_FEE
 
+        if build_only:
+            verb = 'Building transaction for'
+        else:
+            verb = 'Sending'
+
         print('\n'.join([
-            'Sending {:.4f} MOB from account {} {}',
+            '{} {:.4f} MOB from account {} {}',
             'to address {}.',
             'Fee is {:.4f} MOB, for a total amount of {:.4f} MOB',
         ]).format(
+            verb,
             amount,
             account_id[:6],
             account['name'],
@@ -281,11 +288,23 @@ class CommandLineInterface:
             ]).format(unspent))
             return
 
+        if build_only:
+            tx_proposal = self.client.build_transaction(account_id, amount, to_address)
+            path = Path('tx_proposal.json')
+            if path.exists():
+                print(f'{path} already exists.')
+            else:
+                with path.open('w') as f:
+                    json.dump(tx_proposal, f)
+                print(f'Wrote {path}')
+            return
+
         if not confirm('Confirm? (Y/N) '):
             print('Cancelled.')
             return
 
         transaction_log = self.client.build_and_submit_transaction(account_id, amount, to_address)
+
         print('Sent {:.4f} MOB, with a transaction fee of {:.4f} MOB'.format(
             pmob2mob(transaction_log['value_pmob']),
             pmob2mob(transaction_log['fee_pmob']),
