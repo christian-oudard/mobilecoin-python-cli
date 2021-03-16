@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 from decimal import Decimal
 import json
 import os
@@ -7,11 +8,12 @@ import subprocess
 
 from mnemonic import Mnemonic
 
-from mobilecoin.client import (
-    Client,
+from .utility import (
     pmob2mob,
     TRANSACTION_FEE,
+    try_int,
 )
+from .client import Client
 
 
 config = json.loads(os.environ['MOBILECOIN_CONFIG'])
@@ -186,8 +188,9 @@ class CommandLineInterface:
         print()
         _print_account(account, balance)
         print()
+        print('Keep the exported seed phrase file safe and private!')
         print('Anyone who has access to the seed phrase can spend all the')
-        print('funds in the account. Keep the exported file safe and private!')
+        print('funds in the account.')
         if not confirm('Really write account seed phrase to a file? (Y/N) '):
             print('Cancelled.')
             return
@@ -246,9 +249,6 @@ class CommandLineInterface:
 
         print()
 
-    def history(self, account_id):
-        pass
-
     def send(self, account_id, amount, to_address, build_only=False):
         account = self._load_account_prefix(account_id)
         account_id = account['account_id']
@@ -268,17 +268,17 @@ class CommandLineInterface:
             verb = 'Sending'
 
         print('\n'.join([
-            '{} {:.4f} MOB from account {} {}',
+            '{} {} from account {} {}',
             'to address {}.',
-            'Fee is {:.4f} MOB, for a total amount of {:.4f} MOB',
+            'Fee is {}, for a total amount of {}.',
         ]).format(
             verb,
-            amount,
+            _format_mob(amount),
             account_id[:6],
             account['name'],
             to_address,
-            TRANSACTION_FEE,
-            total_amount,
+            _format_mob(TRANSACTION_FEE),
+            _format_mob(total_amount),
         ))
 
         if total_amount > unspent:
@@ -310,16 +310,35 @@ class CommandLineInterface:
             pmob2mob(transaction_log['fee_pmob']),
         ))
 
-    def prepare():
-        pass
+    def history(self, account_id):
+        account = self._load_account_prefix(account_id)
+        account_id = account['account_id']
 
-    def submit():
-        pass
-
+        transactions = self.client.get_all_transaction_logs_for_account(account_id)
+        transactions = sorted(
+            transactions.values(),
+            key=lambda t: int(t['finalized_block_index'])
+        )
+        for t in transactions:
+            print()
+            amount = _format_mob(pmob2mob(t['value_pmob']))
+            if t['direction'] == 'tx_direction_received':
+                print('Received {}'.format(amount))
+                print('  at {}'.format(t['assigned_address_id']))
+            elif t['direction'] == 'tx_direction_sent':
+                fee = _format_mob(pmob2mob(t['fee_pmob']))
+                print('Sent {} (fee {})'.format(amount, fee))
+                print('  to {}'.format(t['recipient_address_id']))
+            print('  in block', t['finalized_block_index'])
+        print()
 
 def confirm(message):
     confirmation = input(message)
     return confirmation.lower() in ['y', 'yes']
+
+
+def _format_mob(mob):
+    return '{:.4f} MOB'.format(mob)
 
 
 def _print_account(account, balance=None):
@@ -333,12 +352,32 @@ def _print_account(account, balance=None):
         offline = (total_blocks == 0)
         if offline:
             total_blocks = balance['local_block_index']
-        print('  {:.4f} MOB ({}/{} blocks synced) {}'.format(
-            pmob2mob(balance['unspent_pmob']),
+        print('  {} ({}/{} blocks synced) {}'.format(
+            _format_mob(pmob2mob(balance['unspent_pmob'])),
             balance['account_block_index'],
             total_blocks,
             ' [offline]' if offline else '',
         ))
+
+
+def _print_txo(txo, received=False):
+    print(txo)
+    to_address = txo['assigned_address']
+    if received:
+        verb = 'Received'
+    else:
+        verb = 'Spent'
+    print('  {} {}'.format(verb, _format_mob(pmob2mob(txo['value_pmob']))))
+    if received:
+        if int(txo['subaddress_index']) == 1:
+            print('    as change')
+        else:
+            print('    at subaddress {}, {}'.format(
+                txo['subaddress_index'],
+                to_address,
+            ))
+    else:
+        print('    to unknown address')
 
 
 def _load_import(seed):

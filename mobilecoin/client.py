@@ -1,11 +1,12 @@
-from decimal import Decimal
 import http
 import json
 
 import requests
 
+from .utility import mob2pmob
+
+
 DEFAULT_URL = 'http://127.0.0.1:9090/wallet'
-TRANSACTION_FEE = Decimal('0.01')
 
 
 class WalletAPIError(Exception):
@@ -133,7 +134,7 @@ class Client:
         return r['balance']
 
     def build_and_submit_transaction(self, account_id, amount, to_address):
-        amount = str(mob2pmob(Decimal(amount)))
+        amount = str(mob2pmob(amount))
         r = self._req({
             "method": "build_and_submit_transaction",
             "params": {
@@ -145,7 +146,7 @@ class Client:
         return r['transaction_log']
 
     def build_transaction(self, account_id, amount, to_address):
-        amount = str(mob2pmob(Decimal(amount)))
+        amount = str(mob2pmob(amount))
         r = self._req({
             "method": "build_transaction",
             "params": {
@@ -156,12 +157,9 @@ class Client:
         })
         return r['tx_proposal']
 
-
-def mob2pmob(x):
-    """ Convert from MOB to picoMOB. """
-    return round(Decimal(x) * Decimal('1e12'))
-
-
-def pmob2mob(x):
-    """ Convert from picoMOB to MOB. """
-    return Decimal(x) / Decimal('1e12')
+    def get_all_transaction_logs_for_account(self, account_id):
+        r = self._req({
+            "method": "get_all_transaction_logs_for_account",
+            "params": {"account_id": account_id}
+        })
+        return r['transaction_log_map']
