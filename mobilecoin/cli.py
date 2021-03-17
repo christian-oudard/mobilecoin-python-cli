@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 
 from mnemonic import Mnemonic
+import segno
 
 from .utility import (
     pmob2mob,
@@ -72,6 +73,9 @@ class CommandLineInterface:
 
         self.export_args = subparsers.add_parser('export', help='Export seed phrase.')
         self.export_args.add_argument('account_id', help='Account ID code.')
+
+        self.qr_args = subparsers.add_parser('qr', help='Show account address as a QR code')
+        self.qr_args.add_argument('account_id', help='Account ID code.')
 
         self.remove_args = subparsers.add_parser('remove', help='Remove an account from local storage.')
         self.remove_args.add_argument('account_id', help='Account ID code.')
@@ -204,6 +208,18 @@ class CommandLineInterface:
             exit(1)
         else:
             print(f'Wrote {filename}.')
+
+    def qr(self, account_id):
+        account = self._load_account_prefix(account_id)
+        account_id = account['account_id']
+        balance = self.client.get_balance_for_account(account_id)
+
+        qr = segno.make(account['main_address'])
+        qr.terminal()
+
+        print()
+        _print_account(account, balance)
+        print()
 
     def remove(self, account_id):
         account = self._load_account_prefix(account_id)
