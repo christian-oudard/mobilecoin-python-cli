@@ -226,19 +226,15 @@ class CommandLineInterface:
         account_id = account['account_id']
         balance = self.client.get_balance_for_account(account_id)
 
-        amount = pmob2mob(balance['unspent_pmob'])
-        if balance['is_synced'] is True and amount == 0:
-            print('Account {} has 0 MOB.'.format(account_id[:6]))
-        else:
-            print('You are about to remove this account:')
-            print()
-            _print_account(account, balance)
-            print()
-            print('You will lose access to the funds in this account unless you')
-            print('restore it from the seed phrase.')
-            if not confirm('Continue? (Y/N) '):
-                print('Cancelled.')
-                return
+        print('You are about to remove this account:')
+        print()
+        _print_account(account, balance)
+        print()
+        print('You will lose access to the funds in this account unless you')
+        print('restore it from the seed phrase.')
+        if not confirm('Continue? (Y/N) '):
+            print('Cancelled.')
+            return
 
         self.client.remove_account(account_id)
         print('Removed.')
