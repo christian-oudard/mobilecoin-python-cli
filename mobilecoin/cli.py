@@ -214,7 +214,8 @@ class CommandLineInterface:
         account_id = account['account_id']
         balance = self.client.get_balance_for_account(account_id)
 
-        qr = segno.make(account['main_address'])
+        mob_url = 'mob:///b58/{}'.format(account['main_address'])
+        qr = segno.make(mob_url)
         qr.terminal()
 
         print()
