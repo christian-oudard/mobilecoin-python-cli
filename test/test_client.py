@@ -1,28 +1,29 @@
 from contextlib import contextmanager
+import json
 import sys
 
-from mobilecoin import Client, WalletAPIError
+from mobilecoin import Client, WalletAPIError, pmob2mob
+from mobilecoin.cli import _load_import
 
 
 def main():
     # c = Client(verbose=True)
     c = Client(verbose=False)
 
-    source_wallet_entropy = sys.argv[1]
+    source_wallet = sys.argv[1]
 
     # Start and end with an empty wallet.
     check_wallet_empty(c)
     try:
         test_errors(c)
         test_account_management(c)
-        # test_transactions(c, source_wallet_entropy)
+        test_transactions(c, source_wallet)
     except Exception:
         print('FAIL')
         raise
     else:
         print('ALL PASS')
     finally:
-        delete_all_accounts(c)
         check_wallet_empty(c)
 
 
@@ -37,6 +38,7 @@ def test_errors(c):
         raise AssertionError()
 
     print('PASS')
+
 
 def test_account_management(c):
     print('test_account_management')
@@ -61,9 +63,9 @@ def test_account_management(c):
     assert account['name'] == 'X'
 
     # Delete the created account.
-    response = c.delete_account(account_id)
+    c.delete_account(account_id)
 
-    # Import an account by entropy.
+    # Import an account from entropy.
     entropy = '0000000000000000000000000000000000000000000000000000000000000000'
     account = c.import_account(entropy)
     account_id = account['account_id']
@@ -87,13 +89,28 @@ def test_account_management(c):
 
     print('PASS')
 
-def test_transactions(c, source_wallet_entropy):
+def test_transactions(c, source_wallet):
     print('test_transactions')
 
-    print(source_wallet_entropy)
+    print('Loading from', source_wallet)
+
     # Import an account with money.
-    # account = c.import_account_by_entropy(c, source_wallet_entropy)
-    # c.get_bala
+    entropy, block = _load_import(source_wallet)
+    account = c.import_account(entropy, block=block)
+    account_id = account['account_id']
+
+    # List txos.
+    txos = c.get_all_txos_for_account(account_id)
+    assert len(txos) > 0
+    # print(json.dumps(txos, indent=2))
+
+    # Check its balance.
+    balance = c.get_balance_for_account(account_id)
+    assert pmob2mob(balance['unspent_pmob']) >= 1
+    c.delete_account(account_id)
+
+    # TODO: Send transactions and ensure they show up in the transaction list.
+
     print('PASS')
 
 
@@ -101,13 +118,6 @@ def check_wallet_empty(c):
     with quiet(c):
         accounts = c.get_all_accounts()
         assert accounts == {}, 'Wallet not empty!'
-
-
-def delete_all_accounts(c):
-    with quiet(c):
-        accounts = c.get_all_accounts()
-        for account_id in accounts.keys():
-            c.delete_account(account_id)
 
 
 @contextmanager

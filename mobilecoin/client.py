@@ -1,8 +1,10 @@
-from decimal import Decimal
 import http
 import json
 
 import requests
+
+from .utility import mob2pmob
+
 
 DEFAULT_URL = 'http://127.0.0.1:9090/wallet'
 
@@ -18,6 +20,13 @@ class Client:
         self.verbose = verbose
 
     def _req(self, request_data):
+        default_params = {
+            "jsonrpc": "2.0",
+            "api_version": "2",
+            "id": 1,
+        }
+        request_data = {**default_params, **request_data}
+
         if self.verbose:
             print('POST', self.url)
             print(json.dumps(request_data, indent=4))
@@ -48,28 +57,17 @@ class Client:
 
         return result
 
-    def _req_v1(self, request_data):
-        return self._req(request_data)
-
-    def _req_v2(self, request_data):
-        default_params = {
-            "jsonrpc": "2.0",
-            "api_version": "2",
-            "id": 1,
-        }
-        return self._req({**default_params, **request_data})
-
     def create_account(self, name=None, block=None):
         params = {"name": name}
         if block is not None:
             params["first_block_index"] = str(int(block))
-        r = self._req_v2({
+        r = self._req({
             "method": "create_account",
             "params": params
         })
         return r['account']
 
-    def import_account(self, entropy, name=None, block=None):
+    def import_account(self, entropy, name=None, block=None, fog_keys=None):
         params = {
             "entropy": entropy,
         }
@@ -77,26 +75,27 @@ class Client:
             params["name"] = name
         if block is not None:
             params["first_block_index"] = str(int(block))
-
-        r = self._req_v2({
+        if fog_keys is not None:
+            params.update(fog_keys)
+        r = self._req({
             "method": "import_account",
             "params": params
         })
         return r['account']
 
     def get_all_accounts(self):
-        r = self._req_v2({"method": "get_all_accounts"})
+        r = self._req({"method": "get_all_accounts"})
         return r['account_map']
 
     def get_account(self, account_id):
-        r = self._req_v2({
+        r = self._req({
             "method": "get_account",
             "params": {"account_id": account_id}
         })
         return r['account']
 
     def update_account_name(self, account_id, name):
-        r = self._req_v2({
+        r = self._req({
             "method": "update_account_name",
             "params": {
                 "account_id": account_id,
@@ -105,27 +104,28 @@ class Client:
         })
         return r['account']
 
-    def delete_account(self, account_id):
-        return self._req_v2({
-            "method": "delete_account",
+    def remove_account(self, account_id):
+        return self._req({
+            "method": "remove_account",
             "params": {"account_id": account_id}
         })
 
     def export_account_secrets(self, account_id):
-        r = self._req_v2({
+        r = self._req({
             "method": "export_account_secrets",
             "params": {"account_id": account_id}
         })
         return r['account_secrets']
 
     def get_all_txos_for_account(self, account_id):
-        return self._req_v2({
-            "method": "get_all_txos_by_account",
+        r = self._req({
+            "method": "get_all_txos_for_account",
             "params": {"account_id": account_id}
         })
+        return r['txo_map']
 
     def get_balance_for_account(self, account_id):
-        r = self._req_v2({
+        r = self._req({
             "method": "get_balance_for_account",
             "params": {
                 "account_id": account_id,
@@ -133,25 +133,33 @@ class Client:
         })
         return r['balance']
 
-    ####
-
-    def send_transaction(self, from_account_id, amount, to_address):
-        amount = str(mob2pmob(Decimal(amount)))
-        self._req_v1({
-            "method": "send_transaction",
+    def build_and_submit_transaction(self, account_id, amount, to_address):
+        amount = str(mob2pmob(amount))
+        r = self._req({
+            "method": "build_and_submit_transaction",
             "params": {
-                "account_id": from_account_id,
-                "value": amount,
+                "account_id": account_id,
+                "value_pmob": amount,
                 "recipient_public_address": to_address,
             }
         })
+        return r['transaction_log']
 
+    def build_transaction(self, account_id, amount, to_address):
+        amount = str(mob2pmob(amount))
+        r = self._req({
+            "method": "build_transaction",
+            "params": {
+                "account_id": account_id,
+                "value_pmob": amount,
+                "recipient_public_address": to_address,
+            }
+        })
+        return r['tx_proposal']
 
-def mob2pmob(x):
-    """ Convert from MOB to picoMOB. """
-    return round(Decimal(x) * Decimal('1e12'))
-
-
-def pmob2mob(x):
-    """ Convert from picoMOB to MOB. """
-    return Decimal(x) / Decimal('1e12')
+    def get_all_transaction_logs_for_account(self, account_id):
+        r = self._req({
+            "method": "get_all_transaction_logs_for_account",
+            "params": {"account_id": account_id}
+        })
+        return r['transaction_log_map']
