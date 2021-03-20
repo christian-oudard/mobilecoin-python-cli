@@ -157,9 +157,45 @@ class Client:
         })
         return r['tx_proposal']
 
+    def submit_transaction(self, account_id, tx_proposal):
+        r = self._req({
+            "method": "submit_transaction",
+            "params": {
+                "account_id": account_id,
+                "tx_proposal": tx_proposal,
+            }
+        })
+        return r
+
     def get_all_transaction_logs_for_account(self, account_id):
         r = self._req({
             "method": "get_all_transaction_logs_for_account",
             "params": {"account_id": account_id}
         })
         return r['transaction_log_map']
+
+    def build_gift_code(self, account_id, amount, memo=""):
+        amount = str(mob2pmob(amount))
+        r = self._req({
+            "method": "build_gift_code",
+            "params": {
+                "account_id": account_id,
+                "value_pmob": amount,
+                "memo": memo,
+            },
+        })
+        return r
+
+    def remove_gift_code(self, gift_code_b58):
+        r = self._req({
+            "method": "remove_gift_code",
+            "params": {"gift_code_b58": gift_code_b58},
+        })
+        return r
+
+    def check_gift_code_status(self, gift_code_b58):
+        r = self._req({
+            "method": "check_gift_code_status",
+            "params": {"gift_code_b58": gift_code_b58}
+        })
+        return r
