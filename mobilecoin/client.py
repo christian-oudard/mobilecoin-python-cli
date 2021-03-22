@@ -1,5 +1,7 @@
 import http
+
 import json
+import time
 
 import requests
 
@@ -133,6 +135,19 @@ class Client:
         })
         return r['balance']
 
+    def poll_balance_until_synced(self, account_id, min_block_index=None):
+        for _ in range(1000):
+            balance = self.get_balance_for_account(account_id)
+            if balance['is_synced']:
+                if (
+                    min_block_index is None
+                    or int(balance['account_block_index']) >= min_block_index
+                ):
+                    return balance
+            time.sleep(1.0)
+        else:
+            raise Exception('Could not sync account {}'.format(account_id))
+
     def build_and_submit_transaction(self, account_id, amount, to_address):
         amount = str(mob2pmob(amount))
         r = self._req({
@@ -163,16 +178,27 @@ class Client:
             "params": {
                 "account_id": account_id,
                 "tx_proposal": tx_proposal,
-            }
+            },
         })
         return r
 
     def get_all_transaction_logs_for_account(self, account_id):
         r = self._req({
             "method": "get_all_transaction_logs_for_account",
-            "params": {"account_id": account_id}
+            "params": {
+                "account_id": account_id,
+            },
         })
         return r['transaction_log_map']
+
+    def create_receiver_receipts(self, tx_proposal):
+        r = self._req({
+            "method": "create_receiver_receipts",
+            "params": {
+                "tx_proposal": tx_proposal,
+            },
+        })
+        return r
 
     def build_gift_code(self, account_id, amount, memo=""):
         amount = str(mob2pmob(amount))
@@ -189,13 +215,27 @@ class Client:
     def remove_gift_code(self, gift_code_b58):
         r = self._req({
             "method": "remove_gift_code",
-            "params": {"gift_code_b58": gift_code_b58},
+            "params": {
+                "gift_code_b58": gift_code_b58,
+            },
         })
         return r
 
     def check_gift_code_status(self, gift_code_b58):
         r = self._req({
             "method": "check_gift_code_status",
-            "params": {"gift_code_b58": gift_code_b58}
+            "params": {
+                "gift_code_b58": gift_code_b58,
+            },
+        })
+        return r
+
+    def claim_gift_code(self, account_id, gift_code_b58):
+        r = self._req({
+            "method": "claim_gift_code",
+            "params": {
+                "account_id": account_id,
+                "gift_code_b58": gift_code_b58,
+            },
         })
         return r

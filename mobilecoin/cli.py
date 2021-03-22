@@ -1,5 +1,4 @@
 import argparse
-from collections import defaultdict
 from decimal import Decimal
 import json
 import os
@@ -12,7 +11,6 @@ import segno
 from .utility import (
     pmob2mob,
     TRANSACTION_FEE,
-    try_int,
 )
 from .client import Client
 
@@ -21,6 +19,9 @@ config = json.loads(os.environ['MOBILECOIN_CONFIG'])
 
 
 class CommandLineInterface:
+
+    def __init__(self):
+        self.verbose = False
 
     def main(self):
         self._create_parsers()
