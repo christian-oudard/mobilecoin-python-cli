@@ -1,11 +1,16 @@
 from contextlib import contextmanager
 from decimal import Decimal
-import json
 import sys
 import tempfile
 import time
 
-from mobilecoin import cli, Client, WalletAPIError, pmob2mob
+from mobilecoin import (
+    cli,
+    Client,
+    WalletAPIError,
+    pmob2mob,
+    FEE,
+)
 
 
 def main():

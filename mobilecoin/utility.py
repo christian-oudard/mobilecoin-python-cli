@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 
-TRANSACTION_FEE = Decimal('0.01')
+FEE = Decimal('0.01')
 
 
 PMOB = Decimal('1e12')
@@ -14,7 +14,11 @@ def mob2pmob(x):
 
 def pmob2mob(x):
     """ Convert from picoMOB to MOB. """
-    return int(x) / PMOB
+    result = int(x) / PMOB
+    if result == 0:
+        return Decimal('0')
+    else:
+        return result
 
 
 def try_int(x):

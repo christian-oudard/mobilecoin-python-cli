@@ -4,6 +4,7 @@ from mobilecoin.client import (
     WalletAPIError,
 )
 from mobilecoin.utility import (
+    FEE,
     mob2pmob,
     pmob2mob,
 )

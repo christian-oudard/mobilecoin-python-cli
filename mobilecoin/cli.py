@@ -10,7 +10,7 @@ import segno
 
 from .utility import (
     pmob2mob,
-    TRANSACTION_FEE,
+    FEE,
 )
 from .client import Client
 
@@ -270,11 +270,11 @@ class CommandLineInterface:
         unspent = pmob2mob(balance['unspent_pmob'])
 
         if amount == "all":
-            amount = unspent - TRANSACTION_FEE
+            amount = unspent - FEE
             total_amount = unspent
         else:
             amount = Decimal(amount)
-            total_amount = amount + TRANSACTION_FEE
+            total_amount = amount + FEE
 
         if build_only:
             verb = 'Building transaction for'
@@ -291,7 +291,7 @@ class CommandLineInterface:
             account_id[:6],
             account['name'],
             to_address,
-            _format_mob(TRANSACTION_FEE),
+            _format_mob(FEE),
             _format_mob(total_amount),
         ))
 
