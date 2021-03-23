@@ -180,7 +180,7 @@ class Client:
                 "tx_proposal": tx_proposal,
             },
         })
-        return r
+        return r['transaction_log']
 
     def get_all_transaction_logs_for_account(self, account_id):
         r = self._req({
@@ -197,6 +197,16 @@ class Client:
             "params": {
                 "tx_proposal": tx_proposal,
             },
+        })
+        return r['receiver_receipts']
+
+    def check_receiver_receipt_status(self, address, receipt):
+        r = self._req({
+            "method": "check_receiver_receipt_status",
+            "params": {
+                "address": address,
+                "receiver_receipt": receipt,
+            }
         })
         return r
 

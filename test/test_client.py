@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from decimal import Decimal
+import json
 import sys
 import tempfile
 import time
@@ -26,7 +27,7 @@ def main():
     cli_obj.stop()
     time.sleep(0.5)  # Wait for other servers to stop.
     cli_obj.start(bg=True)
-    time.sleep(1)  # Wait for the server to start listening.
+    time.sleep(1.5)  # Wait for the server to start listening.
 
     # Start and end with an empty wallet.
     try:
@@ -109,7 +110,7 @@ def test_account_management(c):
 def test_transactions(c, source_wallet):
     print('test_transactions')
 
-    print('Loading from', source_wallet)
+    print('Loading source wallet', source_wallet)
 
     # Import an account with money.
     entropy, block, _ = cli._load_import(source_wallet)
@@ -130,39 +131,68 @@ def test_transactions(c, source_wallet):
             print()
             print(account_id)
             print(secrets['entropy'])
+        raise
+    else:
+        c.remove_account(source_account['account_id'])
 
 
 def test_transactions_inner(c, source_account):
+    assert FEE == Decimal('0.01')
+
     source_account_id = source_account['account_id']
 
-    # Check its balance.
+    # Check its balance and make sure it has txos.
     balance = c.poll_balance_until_synced(source_account_id)
     assert pmob2mob(balance['unspent_pmob']) >= 1
-
-    # List txos.
     txos = c.get_all_txos_for_account(source_account_id)
     assert len(txos) > 0
 
-    # Send transactions and ensure they show up in the transaction list.
+    # Create a temporary account to transact with.
     dest_account = c.create_account()
     dest_account_id = dest_account['account_id']
 
+    # Send transactions and ensure they show up in the transaction list.
     transaction_log = c.build_and_submit_transaction(source_account_id, 0.1, dest_account['main_address'])
     tx_index = int(transaction_log['submitted_block_index'])
     balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
-    print('actual', pmob2mob(balance['unspent_pmob']))
-    print('expected', Decimal('0.1'))
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.1')
 
     transaction_log = c.build_and_submit_transaction(dest_account_id, 0.09, source_account['main_address'])
     tx_index = int(transaction_log['submitted_block_index'])
     balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
-    print('actual', pmob2mob(balance['unspent_pmob']))
-    print('expected', Decimal('0.0'))
+    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
+
+    transaction_log_map = c.get_all_transaction_logs_for_account(dest_account_id)
+    amounts = [ pmob2mob(t['value_pmob']) for t in transaction_log_map.values() ]
+    assert amounts == [Decimal('0.1'), Decimal('0.09')]
+    assert all( t['status'] == 'tx_status_succeeded' for t in transaction_log_map.values() )
+
+    # Send a prepared transaction with a receipt.
+    tx_proposal = c.build_transaction(source_account_id, 0.1, dest_account['main_address'])
+    assert len(tx_proposal['outlay_list']) == 1
+    receipts = c.create_receiver_receipts(tx_proposal)
+    assert len(receipts) == 1
+    receipt = receipts[0]
+
+    status = c.check_receiver_receipt_status(dest_account['main_address'], receipt)
+    assert status['receipt_transaction_status'] == 'TransactionPending'
+
+    transaction_log = c.submit_transaction(source_account_id, tx_proposal)
+    tx_index = int(transaction_log['submitted_block_index'])
+
+    balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
+    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.1')
+
+    status = c.check_receiver_receipt_status(dest_account['main_address'], receipt)
+    assert status['receipt_transaction_status'] == 'TransactionSuccess'
+
+    # Send back the remaining money.
+    transaction_log = c.build_and_submit_transaction(dest_account_id, 0.09, source_account['main_address'])
+    tx_index = int(transaction_log['submitted_block_index'])
+    balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
 
     c.remove_account(dest_account_id)
-    c.remove_account(source_account_id)
 
     print('PASS')
 
