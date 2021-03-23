@@ -20,6 +20,7 @@ class Client:
     def __init__(self, url=DEFAULT_URL, verbose=False):
         self.url = url
         self.verbose = verbose
+        self._query_count = 0
 
     def _req(self, request_data):
         default_params = {
@@ -56,6 +57,8 @@ class Client:
             result = response_data['result']
         except KeyError:
             raise WalletAPIError(json.dumps(response_data, indent=4))
+
+        self._query_count += 1
 
         return result
 
@@ -147,6 +150,16 @@ class Client:
             time.sleep(1.0)
         else:
             raise Exception('Could not sync account {}'.format(account_id))
+
+    def assign_address_for_account(self, account_id, metadata=""):
+        r = self._req({
+            "method": "assign_address_for_account",
+            "params": {
+                "account_id": account_id,
+                "metadata": metadata,
+            },
+        })
+        return r['address']
 
     def build_and_submit_transaction(self, account_id, amount, to_address):
         amount = str(mob2pmob(amount))
