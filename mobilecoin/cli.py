@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 from mnemonic import Mnemonic
 import segno
@@ -329,10 +330,15 @@ class CommandLineInterface:
         account_id = account['account_id']
 
         transactions = self.client.get_all_transaction_logs_for_account(account_id)
-        transactions = sorted(
-            transactions.values(),
-            key=lambda t: int(t['finalized_block_index'])
-        )
+
+        def sort_key(t):
+            try:
+                return int(t['finalized_block_index'])
+            except TypeError:
+                return sys.maxsize
+
+        transactions = sorted(transactions.values(), key=sort_key)
+
         for t in transactions:
             print()
             amount = _format_mob(pmob2mob(t['value_pmob']))
