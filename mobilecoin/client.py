@@ -17,7 +17,9 @@ class WalletAPIError(Exception):
 
 class Client:
 
-    def __init__(self, url=DEFAULT_URL, verbose=False):
+    def __init__(self, url=None, verbose=False):
+        if url is None:
+            url = DEFAULT_URL
         self.url = url
         self.verbose = verbose
         self._query_count = 0

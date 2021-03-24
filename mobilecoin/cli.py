@@ -35,7 +35,7 @@ class CommandLineInterface:
             exit(1)
 
         self.verbose = args.pop('verbose')
-        self.client = Client(verbose=self.verbose)
+        self.client = Client(url=config.get('api-url'), verbose=self.verbose)
 
         # Dispatch command.
         setattr(self, 'import', self.import_)  # Can't name a function "import".
