@@ -140,20 +140,19 @@ class Client:
         })
         return r['balance']
 
-    def poll_balance_until_synced(self, account_id, min_block_index=None):
-        for _ in range(1000):
-            balance = self.get_balance_for_account(account_id)
-            if balance['is_synced']:
-                if (
-                    min_block_index is None
-                    or int(balance['account_block_index']) >= min_block_index
-                ):
-                    return balance
-            time.sleep(1.0)
-        else:
-            raise Exception('Could not sync account {}'.format(account_id))
+    def get_balance_for_address(self, address):
+        r = self._req({
+            "method": "get_balance_for_address",
+            "params": {
+                "address": address,
+            }
+        })
+        return r['balance']
 
-    def assign_address_for_account(self, account_id, metadata=""):
+    def assign_address_for_account(self, account_id, metadata=None):
+        if metadata is None:
+            metadata = ''
+
         r = self._req({
             "method": "assign_address_for_account",
             "params": {
@@ -162,6 +161,15 @@ class Client:
             },
         })
         return r['address']
+
+    def get_all_addresses_for_account(self, account_id):
+        r = self._req({
+            "method": "get_all_addresses_for_account",
+            "params": {
+                "account_id": account_id,
+            },
+        })
+        return r['address_map']
 
     def build_and_submit_transaction(self, account_id, amount, to_address):
         amount = str(mob2pmob(amount))
@@ -264,3 +272,18 @@ class Client:
             },
         })
         return r
+
+    # Utility methods.
+
+    def poll_balance_until_synced(self, account_id, min_block_index=None):
+        for _ in range(1000):
+            balance = self.get_balance_for_account(account_id)
+            if balance['is_synced']:
+                if (
+                    min_block_index is None
+                    or int(balance['account_block_index']) >= min_block_index
+                ):
+                    return balance
+            time.sleep(1.0)
+        else:
+            raise Exception('Could not sync account {}'.format(account_id))

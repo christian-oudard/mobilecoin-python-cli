@@ -32,9 +32,11 @@ def main():
     # Start and end with an empty wallet.
     try:
         check_wallet_empty(c)
+
         test_errors(c)
         test_account_management(c)
-        test_transactions(c, source_wallet)
+        tests_with_wallet(c, source_wallet)
+
         check_wallet_empty(c)
     except Exception:
         print('FAIL')
@@ -45,7 +47,7 @@ def main():
 
 
 def test_errors(c):
-    print('test_errors')
+    print('\ntest_errors')
 
     try:
         c.get_account('invalid')
@@ -58,7 +60,7 @@ def test_errors(c):
 
 
 def test_account_management(c):
-    print('test_account_management')
+    print('\ntest_account_management')
 
     # Create an account.
     account = c.create_account()
@@ -107,17 +109,26 @@ def test_account_management(c):
     print('PASS')
 
 
-def test_transactions(c, source_wallet):
-    print('test_transactions')
+def tests_with_wallet(c, source_wallet):
+    assert FEE == Decimal('0.01')
 
-    print('Loading source wallet', source_wallet)
+    print('\nLoading source wallet', source_wallet)
 
     # Import an account with money.
     entropy, block, _ = cli._load_import(source_wallet)
     source_account = c.import_account(entropy, block=block)
+    source_account_id = source_account['account_id']
+
+    # Check its balance and make sure it has txos.
+    balance = c.poll_balance_until_synced(source_account_id)
+    assert pmob2mob(balance['unspent_pmob']) >= 1
+    txos = c.get_all_txos_for_account(source_account_id)
+    assert len(txos) > 0
 
     try:
-        test_transactions_inner(c, source_account)
+        # test_transaction(c, source_account_id)
+        # test_prepared_transaction(c, source_account_id)
+        test_subaddresses(c, source_account_id)
     except Exception:
         # If the test fails, show account entropy so we can put the funds back.
         print()
@@ -136,16 +147,10 @@ def test_transactions(c, source_wallet):
         c.remove_account(source_account['account_id'])
 
 
-def test_transactions_inner(c, source_account):
-    assert FEE == Decimal('0.01')
+def test_transaction(c, source_account_id):
+    print('\ntest_transaction')
 
-    source_account_id = source_account['account_id']
-
-    # Check its balance and make sure it has txos.
-    balance = c.poll_balance_until_synced(source_account_id)
-    assert pmob2mob(balance['unspent_pmob']) >= 1
-    txos = c.get_all_txos_for_account(source_account_id)
-    assert len(txos) > 0
+    source_account = c.get_account(source_account_id)
 
     # Create a temporary account to transact with.
     dest_account = c.create_account()
@@ -157,15 +162,31 @@ def test_transactions_inner(c, source_account):
     balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.1')
 
+    # Send back the remaining money.
     transaction_log = c.build_and_submit_transaction(dest_account_id, 0.09, source_account['main_address'])
     tx_index = int(transaction_log['submitted_block_index'])
     balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
 
+    # Check transaction logs.
     transaction_log_map = c.get_all_transaction_logs_for_account(dest_account_id)
     amounts = [ pmob2mob(t['value_pmob']) for t in transaction_log_map.values() ]
     assert amounts == [Decimal('0.1'), Decimal('0.09')]
     assert all( t['status'] == 'tx_status_succeeded' for t in transaction_log_map.values() )
+
+    c.remove_account(dest_account_id)
+
+    print('PASS')
+
+
+def test_prepared_transaction(c, source_account_id):
+    print('\ntest_prepared_transaction')
+
+    source_account = c.get_account(source_account_id)
+
+    # Create a temporary account.
+    dest_account = c.create_account()
+    dest_account_id = dest_account['account_id']
 
     # Send a prepared transaction with a receipt.
     tx_proposal = c.build_transaction(source_account_id, 0.1, dest_account['main_address'])
@@ -191,6 +212,56 @@ def test_transactions_inner(c, source_account):
     tx_index = int(transaction_log['submitted_block_index'])
     balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
+
+    c.remove_account(dest_account_id)
+
+    print('PASS')
+
+
+def test_subaddresses(c, source_account_id):
+    print('\ntest_subaddresses')
+
+    addresses = c.get_all_addresses_for_account(source_account_id)
+    source_address = list(addresses.keys())[0]
+
+    # Create a temporary account.
+    dest_account = c.create_account()
+    dest_account_id = dest_account['account_id']
+
+    # Create a subaddress for the destination account.
+    addresses = c.get_all_addresses_for_account(dest_account_id)
+    assert len(addresses) == 2  # Main address and change address.
+
+    address = c.assign_address_for_account(dest_account_id, 'Address Name')
+    dest_address = address['public_address']
+
+    addresses = c.get_all_addresses_for_account(dest_account_id)
+    assert len(addresses) == 3
+    assert addresses[dest_address]['metadata'] == 'Address Name'
+
+    # Send the subaddress some money.
+    transaction_log = c.build_and_submit_transaction(source_account_id, 0.1, dest_address)
+    tx_index = int(transaction_log['submitted_block_index'])
+    balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
+    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.1')
+
+    # The second address has money credited to it, but the main one doesn't.
+    balance = c.get_balance_for_address(dest_address)
+    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.1')
+    balance = c.get_balance_for_address(dest_account['main_address'])
+    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
+
+    # Send the money back.
+    transaction_log = c.build_and_submit_transaction(dest_account_id, 0.09, source_address)
+    tx_index = int(transaction_log['submitted_block_index'])
+    balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
+    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
+
+    # The per-address balances cannot account for sent funds.
+    balance = c.get_balance_for_address(dest_account['main_address'])
+    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
+    balance = c.get_balance_for_address(dest_address)
+    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.1')
 
     c.remove_account(dest_account_id)
 

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from textwrap import indent
 
 from mnemonic import Mnemonic
 import segno
@@ -49,49 +50,60 @@ class CommandLineInterface:
         )
         self.parser.add_argument('-v', '--verbose', action='store_true', help='Show more information.')
 
-        subparsers = self.parser.add_subparsers(dest='command', help='Commands')
+        command_sp = self.parser.add_subparsers(dest='command', help='Commands')
 
-        self.start_args = subparsers.add_parser('start', help='Start the local MobileCoin wallet server.')
+        self.start_args = command_sp.add_parser('start', help='Start the local MobileCoin wallet server.')
         self.start_args.add_argument('--offline', action='store_true', help='Start in offline mode.')
         self.start_args.add_argument('--bg', action='store_true',
                                      help='Start server in the background, stop with "mobilecoin stop".')
 
-        self.stop_args = subparsers.add_parser('stop', help='Stop the local MobileCoin wallet server.')
+        self.stop_args = command_sp.add_parser('stop', help='Stop the local MobileCoin wallet server.')
 
-        self.create_args = subparsers.add_parser('create', help='Create a new account.')
+        self.create_args = command_sp.add_parser('create', help='Create a new account.')
         self.create_args.add_argument('-n', '--name', help='Account name.')
         self.create_args.add_argument('-b', '--block', type=int,
                                       help='Block index at which to start the account. No transactions before this block will be loaded.')
 
-        self.rename_args = subparsers.add_parser('rename', help='Change account name.')
+        self.rename_args = command_sp.add_parser('rename', help='Change account name.')
         self.rename_args.add_argument('account_id', help='Account ID code.')
         self.rename_args.add_argument('name', help='New account name.')
 
-        self.import_args = subparsers.add_parser('import', help='Import an account.')
+        self.import_args = command_sp.add_parser('import', help='Import an account.')
         self.import_args.add_argument('seed', help='Account seed phrase, seed file, or root entropy hex.')
         self.import_args.add_argument('-n', '--name', help='Account name.')
         self.import_args.add_argument('-b', '--block', type=int,
                                       help='Block index at which to start the account. No transactions before this block will be loaded.')
 
-        self.export_args = subparsers.add_parser('export', help='Export seed phrase.')
+        self.export_args = command_sp.add_parser('export', help='Export seed phrase.')
         self.export_args.add_argument('account_id', help='Account ID code.')
 
-        self.qr_args = subparsers.add_parser('qr', help='Show account address as a QR code')
+        self.qr_args = command_sp.add_parser('qr', help='Show account address as a QR code')
         self.qr_args.add_argument('account_id', help='Account ID code.')
 
-        self.remove_args = subparsers.add_parser('remove', help='Remove an account from local storage.')
+        self.remove_args = command_sp.add_parser('remove', help='Remove an account from local storage.')
         self.remove_args.add_argument('account_id', help='Account ID code.')
 
-        self.list_args = subparsers.add_parser('list', help='List accounts.')
+        self.list_args = command_sp.add_parser('list', help='List accounts.')
 
-        self.history_args = subparsers.add_parser('history', help='Show account transaction history.')
+        self.history_args = command_sp.add_parser('history', help='Show account transaction history.')
         self.history_args.add_argument('account_id', help='Account ID code.')
 
-        self.send_args = subparsers.add_parser('send', help='Send a transaction.')
+        self.send_args = command_sp.add_parser('send', help='Send a transaction.')
         self.send_args.add_argument('--build-only', action='store_true', help='Just build the transaction, do not submit it.')
         self.send_args.add_argument('account_id', help='Account ID to send from.')
         self.send_args.add_argument('amount', help='Amount of MOB to send.')
         self.send_args.add_argument('to_address', help='Address to send to.')
+
+        self.address_args = command_sp.add_parser('address', help='Account receiving address functions.')
+        address_action = self.address_args.add_subparsers(dest='action')
+        self.address_list_args = address_action.add_parser('list', help='List addresses and balances for an account.')
+        self.address_list_args.add_argument('account_id', help='Account ID code.')
+        self.address_create_args = address_action.add_parser(
+            'create',
+            help='Create a new receiving address for the specified account.',
+        )
+        self.address_create_args.add_argument('account_id', help='Account ID code.')
+        self.address_create_args.add_argument('metadata', nargs='?', help='Address label.')
 
     def _load_account_prefix(self, prefix):
         accounts = self.client.get_all_accounts()
@@ -352,6 +364,43 @@ class CommandLineInterface:
             print('  in block', t['finalized_block_index'])
         print()
 
+    def address(self, action, **args):
+        getattr(self, 'address_' + action)(**args)
+
+    def address_list(self, account_id):
+        account = self._load_account_prefix(account_id)
+        addresses = self.client.get_all_addresses_for_account(account['account_id'])
+
+        print()
+        print(_format_account_header(account))
+
+        for address in addresses.values():
+            if int(address['subaddress_index']) == 1:
+                continue  # Don't show change address.
+            print(indent(
+                '{} {}'.format(address['public_address'], address['metadata']),
+                ' '*2,
+            ))
+            balance = self.client.get_balance_for_address(address['public_address'])
+            print(indent(
+                _format_balance(balance),
+                ' '*4,
+            ))
+
+        print()
+
+    def address_create(self, account_id, metadata):
+        account = self._load_account_prefix(account_id)
+        address = self.client.assign_address_for_account(account['account_id'], metadata)
+        print()
+        print(_format_account_header(account))
+        print(indent(
+            '{} {}'.format(address['public_address'], address['metadata']),
+            ' '*2,
+        ))
+        print()
+
+
 def confirm(message):
     confirmation = input(message)
     return confirmation.lower() in ['y', 'yes']
@@ -361,22 +410,33 @@ def _format_mob(mob):
     return '{:.4f} MOB'.format(mob)
 
 
+def _format_account_header(account):
+    return '{} {}'.format(account['account_id'][:6], account['name'])
+
+
+def _format_balance(balance):
+    total_blocks = int(balance['network_block_index'])
+    offline = (total_blocks == 0)
+    if offline:
+        total_blocks = balance['local_block_index']
+    return '{} ({}/{} blocks synced) {}'.format(
+        _format_mob(pmob2mob(balance['unspent_pmob'])),
+        balance['account_block_index'],
+        total_blocks,
+        ' [offline]' if offline else '',
+    )
+
+
 def _print_account(account, balance=None):
-    account_id = account['account_id']
-
-    print(account_id[:6], account['name'])
-    print('  address', account['main_address'])
-
+    print(_format_account_header(account))
+    print(indent(
+        'address {}'.format(account['main_address']),
+        ' '*2,
+    ))
     if balance is not None:
-        total_blocks = int(balance['network_block_index'])
-        offline = (total_blocks == 0)
-        if offline:
-            total_blocks = balance['local_block_index']
-        print('  {} ({}/{} blocks synced) {}'.format(
-            _format_mob(pmob2mob(balance['unspent_pmob'])),
-            balance['account_block_index'],
-            total_blocks,
-            ' [offline]' if offline else '',
+        print(indent(
+            _format_balance(balance),
+            ' '*2,
         ))
 
 
