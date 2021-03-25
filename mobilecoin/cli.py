@@ -17,13 +17,11 @@ from .utility import (
 from .client import Client
 
 
-config = json.loads(os.environ['MOBILECOIN_CONFIG'])
-
-
 class CommandLineInterface:
 
     def __init__(self):
         self.verbose = False
+        self.config = json.loads(os.environ['MOBILECOIN_CONFIG'])
 
     def main(self):
         self._create_parsers()
@@ -36,7 +34,7 @@ class CommandLineInterface:
             exit(1)
 
         self.verbose = args.pop('verbose')
-        self.client = Client(url=config.get('api-url'), verbose=self.verbose)
+        self.client = Client(url=self.config.get('api-url'), verbose=self.verbose)
 
         # Dispatch command.
         setattr(self, 'import', self.import_)  # Can't name a function "import".
@@ -123,38 +121,38 @@ class CommandLineInterface:
 
     def start(self, offline=False, bg=False):
         wallet_server_command = [
-            config['executable'],
-            '--ledger-db', config['ledger-db'],
-            '--wallet-db', config['wallet-db'],
+            self.config['executable'],
+            '--ledger-db', self.config['ledger-db'],
+            '--wallet-db', self.config['wallet-db'],
         ]
         if offline:
             wallet_server_command += ['--offline']
         else:
-            for peer in config['peer']:
+            for peer in self.config['peer']:
                 wallet_server_command += ['--peer', peer]
-            for tx_source_url in config['tx-source-url']:
+            for tx_source_url in self.config['tx-source-url']:
                 wallet_server_command += ['--tx-source-url', tx_source_url]
 
-        ingest_enclave = config.get('fog-ingest-enclave-css')
+        ingest_enclave = self.config.get('fog-ingest-enclave-css')
         if ingest_enclave is not None:
             wallet_server_command += ['--fog-ingest-enclave-css', ingest_enclave]
 
         if bg:
             wallet_server_command += [
-                '>', config['logfile'], '2>&1'
+                '>', self.config['logfile'], '2>&1'
             ]
 
         if self.verbose:
             print(' '.join(wallet_server_command))
 
-        print('Starting {}...'.format(Path(config['executable']).name))
+        print('Starting {}...'.format(Path(self.config['executable']).name))
 
-        Path(config['ledger-db']).mkdir(parents=True, exist_ok=True)
-        Path(config['wallet-db']).parent.mkdir(parents=True, exist_ok=True)
+        Path(self.config['ledger-db']).mkdir(parents=True, exist_ok=True)
+        Path(self.config['wallet-db']).parent.mkdir(parents=True, exist_ok=True)
 
         if bg:
             subprocess.Popen(' '.join(wallet_server_command), shell=True)
-            print('Started, view log at {}.'.format(config['logfile']))
+            print('Started, view log at {}.'.format(self.config['logfile']))
             print('Stop server with "mobcli stop".')
         else:
             subprocess.run(' '.join(wallet_server_command), shell=True)
@@ -162,7 +160,7 @@ class CommandLineInterface:
     def stop(self):
         if self.verbose:
             print('Stopping MobileCoin wallet server...')
-        subprocess.Popen(['killall', '-v', config['executable']])
+        subprocess.Popen(['killall', '-v', self.config['executable']])
 
     def create(self, **args):
         account = self.client.create_account(**args)

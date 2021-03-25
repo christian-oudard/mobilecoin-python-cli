@@ -6,12 +6,12 @@ import tempfile
 import time
 
 from mobilecoin import (
-    cli,
     Client,
     WalletAPIError,
     pmob2mob,
     FEE,
 )
+from mobilecoin.cli import CommandLineInterface
 
 
 def main():
@@ -22,11 +22,11 @@ def main():
 
     # Create a test wallet database, and start the server.
     db_file = tempfile.NamedTemporaryFile(suffix='.db', prefix='test_wallet_', delete=False)
+    cli = CommandLineInterface()
     cli.config['wallet-db'] = db_file.name
-    cli_obj = cli.CommandLineInterface()
-    cli_obj.stop()
+    cli.stop()
     time.sleep(0.5)  # Wait for other servers to stop.
-    cli_obj.start(bg=True)
+    cli.start(bg=True)
     time.sleep(1.5)  # Wait for the server to start listening.
 
     # Start and end with an empty wallet.
@@ -43,7 +43,7 @@ def main():
         raise
     else:
         print('ALL PASS')
-        cli_obj.stop()  # Only stop the server if there were no errors.
+        cli.stop()  # Only stop the server if there were no errors.
 
 
 def test_errors(c):
