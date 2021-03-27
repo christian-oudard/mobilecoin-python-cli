@@ -1,6 +1,5 @@
 from contextlib import contextmanager
 from decimal import Decimal
-import json
 import sys
 import tempfile
 import time
@@ -11,7 +10,10 @@ from mobilecoin import (
     pmob2mob,
     FEE,
 )
-from mobilecoin.cli import CommandLineInterface
+from mobilecoin.cli import (
+    CommandLineInterface,
+    _load_import,
+)
 
 
 def main():
@@ -115,33 +117,22 @@ def tests_with_wallet(c, source_wallet):
     print('\nLoading source wallet', source_wallet)
 
     # Import an account with money.
-    entropy, block, _ = cli._load_import(source_wallet)
+    entropy, block, _ = _load_import(source_wallet)
     source_account = c.import_account(entropy, block=block)
     source_account_id = source_account['account_id']
 
     # Check its balance and make sure it has txos.
-    balance = c.poll_balance_until_synced(source_account_id)
+    balance = c.poll_balance(source_account_id)
     assert pmob2mob(balance['unspent_pmob']) >= 1
     txos = c.get_all_txos_for_account(source_account_id)
     assert len(txos) > 0
 
     try:
-        # test_transaction(c, source_account_id)
-        # test_prepared_transaction(c, source_account_id)
+        test_transaction(c, source_account_id)
+        test_prepared_transaction(c, source_account_id)
         test_subaddresses(c, source_account_id)
+        test_gift_codes(c, source_account_id)
     except Exception:
-        # If the test fails, show account entropy so we can put the funds back.
-        print()
-        print('main address')
-        print(source_account['main_address'])
-        accounts = c.get_all_accounts()
-        for account_id in accounts.keys():
-            if account_id == source_account['account_id']:
-                continue
-            secrets = c.export_account_secrets(account_id)
-            print()
-            print(account_id)
-            print(secrets['entropy'])
         raise
     else:
         c.remove_account(source_account['account_id'])
@@ -159,19 +150,19 @@ def test_transaction(c, source_account_id):
     # Send transactions and ensure they show up in the transaction list.
     transaction_log = c.build_and_submit_transaction(source_account_id, 0.1, dest_account['main_address'])
     tx_index = int(transaction_log['submitted_block_index'])
-    balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
+    balance = c.poll_balance(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.1')
 
     # Send back the remaining money.
     transaction_log = c.build_and_submit_transaction(dest_account_id, 0.09, source_account['main_address'])
     tx_index = int(transaction_log['submitted_block_index'])
-    balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
+    balance = c.poll_balance(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
 
     # Check transaction logs.
     transaction_log_map = c.get_all_transaction_logs_for_account(dest_account_id)
     amounts = [ pmob2mob(t['value_pmob']) for t in transaction_log_map.values() ]
-    assert amounts == [Decimal('0.1'), Decimal('0.09')]
+    assert amounts == [Decimal('0.1'), Decimal('0.09')], str(amounts)
     assert all( t['status'] == 'tx_status_succeeded' for t in transaction_log_map.values() )
 
     c.remove_account(dest_account_id)
@@ -201,7 +192,7 @@ def test_prepared_transaction(c, source_account_id):
     transaction_log = c.submit_transaction(source_account_id, tx_proposal)
     tx_index = int(transaction_log['submitted_block_index'])
 
-    balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
+    balance = c.poll_balance(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.1')
 
     status = c.check_receiver_receipt_status(dest_account['main_address'], receipt)
@@ -210,7 +201,7 @@ def test_prepared_transaction(c, source_account_id):
     # Send back the remaining money.
     transaction_log = c.build_and_submit_transaction(dest_account_id, 0.09, source_account['main_address'])
     tx_index = int(transaction_log['submitted_block_index'])
-    balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
+    balance = c.poll_balance(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
 
     c.remove_account(dest_account_id)
@@ -242,7 +233,7 @@ def test_subaddresses(c, source_account_id):
     # Send the subaddress some money.
     transaction_log = c.build_and_submit_transaction(source_account_id, 0.1, dest_address)
     tx_index = int(transaction_log['submitted_block_index'])
-    balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
+    balance = c.poll_balance(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.1')
 
     # The second address has money credited to it, but the main one doesn't.
@@ -254,14 +245,51 @@ def test_subaddresses(c, source_account_id):
     # Send the money back.
     transaction_log = c.build_and_submit_transaction(dest_account_id, 0.09, source_address)
     tx_index = int(transaction_log['submitted_block_index'])
-    balance = c.poll_balance_until_synced(dest_account_id, tx_index + 1)
+    balance = c.poll_balance(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
 
-    # The per-address balances cannot account for sent funds.
+    # The per-address balances account for sent funds.
     balance = c.get_balance_for_address(dest_account['main_address'])
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
     balance = c.get_balance_for_address(dest_address)
-    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.1')
+    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
+
+    c.remove_account(dest_account_id)
+
+    print('PASS')
+
+
+def test_gift_codes(c, source_account_id):
+    print('\ntest_gift_codes')
+
+    source_account = c.get_account(source_account_id)
+
+    # Create a gift code.
+    response = c.build_gift_code(source_account_id, 0.1, 'abc')
+    gift_code_b58 = response['gift_code_b58']
+    tx_proposal = response['tx_proposal']
+    c.submit_gift_code(gift_code_b58, tx_proposal, source_account_id)
+
+    # Make sure the gift code was funded correctly.
+    response = c.poll_gift_code_status(gift_code_b58, 'GiftCodeAvailable')
+    assert pmob2mob(response['gift_code_value']) == Decimal('0.1')
+
+    # Create a temporary account.
+    dest_account = c.create_account()
+    dest_account_id = dest_account['account_id']
+
+    # Claim the gift code.
+    # Claimed means the txo was sent, not that it arrived. Poll for the Txo to land.
+    txo_id_hex = c.claim_gift_code(dest_account_id, gift_code_b58)
+    c.poll_txo(txo_id_hex)
+    balance = c.get_balance_for_account(dest_account_id)
+    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.09')
+
+    # Send back the remaining money. We incurred two fees to submit and claim the gift code.
+    transaction_log = c.build_and_submit_transaction(dest_account_id, 0.08, source_account['main_address'])
+    tx_index = int(transaction_log['submitted_block_index'])
+    balance = c.poll_balance(dest_account_id, tx_index + 1)
+    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
 
     c.remove_account(dest_account_id)
 

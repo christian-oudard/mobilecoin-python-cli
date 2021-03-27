@@ -12,7 +12,8 @@ DEFAULT_URL = 'http://127.0.0.1:9090/wallet'
 
 
 class WalletAPIError(Exception):
-    pass
+    def __init__(self, response):
+        self.response = response
 
 
 class Client:
@@ -40,14 +41,12 @@ class Client:
         try:
             r = requests.post(self.url, json=request_data)
         except requests.ConnectionError:
-            print(f'Could not connect to server at {self.url}.')
-            raise
+            raise ConnectionError(f'Could not connect to server at {self.url}.')
 
         try:
             response_data = r.json()
         except ValueError:
-            print('API returned invalid JSON:', r.text)
-            raise
+            raise ValueError('API returned invalid JSON:', r.text)
 
         if self.verbose:
             print(r.status_code, http.client.responses[r.status_code])
@@ -58,7 +57,7 @@ class Client:
         try:
             result = response_data['result']
         except KeyError:
-            raise WalletAPIError(json.dumps(response_data, indent=4))
+            raise WalletAPIError(response_data)
 
         self._query_count += 1
 
@@ -130,6 +129,15 @@ class Client:
             "params": {"account_id": account_id}
         })
         return r['txo_map']
+
+    def get_txo(self, txo_id_hex):
+        r = self._req({
+            "method": "get_txo",
+            "params": {
+                "txo_id_hex": txo_id_hex,
+            },
+        })
+        return r['txo']
 
     def get_balance_for_account(self, account_id):
         r = self._req({
@@ -245,14 +253,25 @@ class Client:
         })
         return r
 
-    def remove_gift_code(self, gift_code_b58):
+    def submit_gift_code(self, gift_code_b58, tx_proposal, account_id):
         r = self._req({
-            "method": "remove_gift_code",
+            "method": "submit_gift_code",
+            "params": {
+                "gift_code_b58": gift_code_b58,
+                "tx_proposal": tx_proposal,
+                "from_account_id": account_id,
+            },
+        })
+        return r['gift_code']
+
+    def get_gift_code(self, gift_code_b58):
+        r = self._req({
+            "method": "get_gift_code",
             "params": {
                 "gift_code_b58": gift_code_b58,
             },
         })
-        return r
+        return r['gift_code']
 
     def check_gift_code_status(self, gift_code_b58):
         r = self._req({
@@ -263,6 +282,12 @@ class Client:
         })
         return r
 
+    def get_all_gift_codes(self):
+        r = self._req({
+            "method": "get_all_gift_codes",
+        })
+        return r['gift_codes']
+
     def claim_gift_code(self, account_id, gift_code_b58):
         r = self._req({
             "method": "claim_gift_code",
@@ -271,12 +296,21 @@ class Client:
                 "gift_code_b58": gift_code_b58,
             },
         })
-        return r
+        return r['txo_id_hex']
+
+    def remove_gift_code(self, gift_code_b58):
+        r = self._req({
+            "method": "remove_gift_code",
+            "params": {
+                "gift_code_b58": gift_code_b58,
+            },
+        })
+        return r['removed']
 
     # Utility methods.
 
-    def poll_balance_until_synced(self, account_id, min_block_index=None):
-        for _ in range(1000):
+    def poll_balance(self, account_id, min_block_index=None, seconds=10):
+        for _ in range(seconds):
             balance = self.get_balance_for_account(account_id)
             if balance['is_synced']:
                 if (
@@ -287,3 +321,22 @@ class Client:
             time.sleep(1.0)
         else:
             raise Exception('Could not sync account {}'.format(account_id))
+
+    def poll_gift_code_status(self, gift_code_b58, target_status, seconds=10):
+        for _ in range(seconds):
+            response = self.check_gift_code_status(gift_code_b58)
+            if response['gift_code_status'] == target_status:
+                return response
+            time.sleep(1.0)
+        else:
+            raise Exception('Gift code {} never reached status {}.'.format(gift_code_b58, target_status))
+
+    def poll_txo(self, txo_id_hex, seconds=10):
+        for _ in range(10):
+            try:
+                return self.get_txo(txo_id_hex)
+            except WalletAPIError:
+                pass
+            time.sleep(1)
+        else:
+            raise Exception('Txo {} never landed.'.format(txo_id_hex))

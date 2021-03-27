@@ -14,7 +14,10 @@ from .utility import (
     pmob2mob,
     FEE,
 )
-from .client import Client
+from .client import (
+    Client,
+    WalletAPIError,
+)
 
 
 class CommandLineInterface:
@@ -34,6 +37,8 @@ class CommandLineInterface:
             exit(1)
 
         self.verbose = args.pop('verbose')
+        self.auto_confirm = args.pop('yes')
+
         self.client = Client(url=self.config.get('api-url'), verbose=self.verbose)
 
         # Dispatch command.
@@ -47,61 +52,99 @@ class CommandLineInterface:
             description='MobileCoin command-line wallet.',
         )
         self.parser.add_argument('-v', '--verbose', action='store_true', help='Show more information.')
+        self.parser.add_argument('-y', '--yes', action='store_true', help='Do not ask for confirmation.')
 
         command_sp = self.parser.add_subparsers(dest='command', help='Commands')
 
+        # Start server.
         self.start_args = command_sp.add_parser('start', help='Start the local MobileCoin wallet server.')
         self.start_args.add_argument('--offline', action='store_true', help='Start in offline mode.')
         self.start_args.add_argument('--bg', action='store_true',
                                      help='Start server in the background, stop with "mobilecoin stop".')
 
+        # Stop server.
         self.stop_args = command_sp.add_parser('stop', help='Stop the local MobileCoin wallet server.')
 
+        # List accounts.
+        self.list_args = command_sp.add_parser('list', help='List accounts.')
+
+        # Create account.
         self.create_args = command_sp.add_parser('create', help='Create a new account.')
         self.create_args.add_argument('-n', '--name', help='Account name.')
         self.create_args.add_argument('-b', '--block', type=int,
                                       help='Block index at which to start the account. No transactions before this block will be loaded.')
 
+        # Rename account.
         self.rename_args = command_sp.add_parser('rename', help='Change account name.')
-        self.rename_args.add_argument('account_id', help='Account ID code.')
+        self.rename_args.add_argument('account_id', help='ID of the account to rename.')
         self.rename_args.add_argument('name', help='New account name.')
 
+        # Import account.
         self.import_args = command_sp.add_parser('import', help='Import an account.')
         self.import_args.add_argument('seed', help='Account seed phrase, seed file, or root entropy hex.')
         self.import_args.add_argument('-n', '--name', help='Account name.')
         self.import_args.add_argument('-b', '--block', type=int,
                                       help='Block index at which to start the account. No transactions before this block will be loaded.')
 
+        # Export account.
         self.export_args = command_sp.add_parser('export', help='Export seed phrase.')
-        self.export_args.add_argument('account_id', help='Account ID code.')
+        self.export_args.add_argument('account_id', help='ID of the account to export.')
 
-        self.qr_args = command_sp.add_parser('qr', help='Show account address as a QR code')
-        self.qr_args.add_argument('account_id', help='Account ID code.')
-
+        # Remove account.
         self.remove_args = command_sp.add_parser('remove', help='Remove an account from local storage.')
-        self.remove_args.add_argument('account_id', help='Account ID code.')
-
-        self.list_args = command_sp.add_parser('list', help='List accounts.')
-
+        self.remove_args.add_argument('account_id', help='ID of the account to remove.')
+        # Show transaction history.
         self.history_args = command_sp.add_parser('history', help='Show account transaction history.')
-        self.history_args.add_argument('account_id', help='Account ID code.')
+        self.history_args.add_argument('account_id', help='Account ID.')
 
+        # Send transaction.
         self.send_args = command_sp.add_parser('send', help='Send a transaction.')
         self.send_args.add_argument('--build-only', action='store_true', help='Just build the transaction, do not submit it.')
-        self.send_args.add_argument('account_id', help='Account ID to send from.')
+        self.send_args.add_argument('account_id', help='Source account ID.')
         self.send_args.add_argument('amount', help='Amount of MOB to send.')
         self.send_args.add_argument('to_address', help='Address to send to.')
 
-        self.address_args = command_sp.add_parser('address', help='Account receiving address functions.')
+        # Address QR code.
+        self.qr_args = command_sp.add_parser('qr', help='Show account address as a QR code')
+        self.qr_args.add_argument('account_id', help='Account ID.')
+
+        # Address commands.
+        self.address_args = command_sp.add_parser('address', help='Account receiving address commands.')
         address_action = self.address_args.add_subparsers(dest='action')
+
+        # List addresses.
         self.address_list_args = address_action.add_parser('list', help='List addresses and balances for an account.')
-        self.address_list_args.add_argument('account_id', help='Account ID code.')
+        self.address_list_args.add_argument('account_id', help='Account ID.')
+
+        # Create address.
         self.address_create_args = address_action.add_parser(
             'create',
             help='Create a new receiving address for the specified account.',
         )
-        self.address_create_args.add_argument('account_id', help='Account ID code.')
+        self.address_create_args.add_argument('account_id', help='Account ID.')
         self.address_create_args.add_argument('metadata', nargs='?', help='Address label.')
+
+        # Gift code commands.
+        self.gift_args = command_sp.add_parser('gift', help='Gift code commands.')
+        gift_action = self.gift_args.add_subparsers(dest='action')
+
+        # List gift codes.
+        self.gift_list_args = gift_action.add_parser('list', help='List gift codes and their amounts.')
+
+        # Create gift code.
+        self.gift_create_args = gift_action.add_parser('create', help='Create a new gift code.')
+        self.gift_create_args.add_argument('account_id', help='Source account ID.')
+        self.gift_create_args.add_argument('amount', help='Amount of MOB to add to the gift code.')
+        self.gift_create_args.add_argument('-m', '--memo', help='Gift code memo.')
+
+        # Claim gift code.
+        self.gift_claim_args = gift_action.add_parser('claim', help='Claim a gift code, adding the funds to your account.')
+        self.gift_claim_args.add_argument('account_id', help='Destination account ID to deposit the gift code funds.')
+        self.gift_claim_args.add_argument('gift_code', help='Gift code string')
+
+        # Remove gift code.
+        self.gift_remove_args = gift_action.add_parser('remove', help='Remove a gift code.')
+        self.gift_remove_args.add_argument('gift_code', help='Gift code to remove.')
 
     def _load_account_prefix(self, prefix):
         accounts = self.client.get_all_accounts()
@@ -118,6 +161,12 @@ class CommandLineInterface:
         else:
             print('Multiple matching matching ids: {}'.format(', '.join(matching_ids)))
             exit(1)
+
+    def confirm(self, message):
+        if self.auto_confirm:
+            return True
+        confirmation = input(message)
+        return confirmation.lower() in ['y', 'yes']
 
     def start(self, offline=False, bg=False):
         wallet_server_command = [
@@ -161,6 +210,28 @@ class CommandLineInterface:
         if self.verbose:
             print('Stopping MobileCoin wallet server...')
         subprocess.Popen(['killall', '-v', self.config['executable']])
+
+    def list(self, **args):
+        accounts = self.client.get_all_accounts(**args)
+
+        if len(accounts) == 0:
+            print('No accounts.')
+            return
+
+        account_list = []
+        for account_id, account in accounts.items():
+            balance = self.client.get_balance_for_account(account_id)
+            account_list.append((account_id, account, balance))
+
+        for (account_id, account, balance) in account_list:
+            total_blocks = int(balance['network_block_index'])
+            offline = (total_blocks == 0)
+            if offline:
+                total_blocks = balance['local_block_index']
+            print()
+            _print_account(account, balance)
+
+        print()
 
     def create(self, **args):
         account = self.client.create_account(**args)
@@ -207,7 +278,7 @@ class CommandLineInterface:
         print('Keep the exported seed phrase file safe and private!')
         print('Anyone who has access to the seed phrase can spend all the')
         print('funds in the account.')
-        if not confirm('Really write account seed phrase to a file? (Y/N) '):
+        if not self.confirm('Really write account seed phrase to a file? (Y/N) '):
             print('Cancelled.')
             return
 
@@ -221,19 +292,6 @@ class CommandLineInterface:
         else:
             print(f'Wrote {filename}.')
 
-    def qr(self, account_id):
-        account = self._load_account_prefix(account_id)
-        account_id = account['account_id']
-        balance = self.client.get_balance_for_account(account_id)
-
-        mob_url = 'mob:///b58/{}'.format(account['main_address'])
-        qr = segno.make(mob_url)
-        qr.terminal()
-
-        print()
-        _print_account(account, balance)
-        print()
-
     def remove(self, account_id):
         account = self._load_account_prefix(account_id)
         account_id = account['account_id']
@@ -245,33 +303,38 @@ class CommandLineInterface:
         print()
         print('You will lose access to the funds in this account unless you')
         print('restore it from the seed phrase.')
-        if not confirm('Continue? (Y/N) '):
+        if not self.confirm('Continue? (Y/N) '):
             print('Cancelled.')
             return
 
         self.client.remove_account(account_id)
         print('Removed.')
 
-    def list(self, **args):
-        accounts = self.client.get_all_accounts(**args)
+    def history(self, account_id):
+        account = self._load_account_prefix(account_id)
+        account_id = account['account_id']
 
-        if len(accounts) == 0:
-            print('No accounts.')
-            return
+        transactions = self.client.get_all_transaction_logs_for_account(account_id)
 
-        account_list = []
-        for account_id, account in accounts.items():
-            balance = self.client.get_balance_for_account(account_id)
-            account_list.append((account_id, account, balance))
+        def sort_key(t):
+            try:
+                return int(t['finalized_block_index'])
+            except TypeError:
+                return sys.maxsize
 
-        for (account_id, account, balance) in account_list:
-            total_blocks = int(balance['network_block_index'])
-            offline = (total_blocks == 0)
-            if offline:
-                total_blocks = balance['local_block_index']
+        transactions = sorted(transactions.values(), key=sort_key)
+
+        for t in transactions:
             print()
-            _print_account(account, balance)
-
+            amount = _format_mob(pmob2mob(t['value_pmob']))
+            if t['direction'] == 'tx_direction_received':
+                print('Received {}'.format(amount))
+                print('  at {}'.format(t['assigned_address_id']))
+            elif t['direction'] == 'tx_direction_sent':
+                fee = _format_mob(pmob2mob(t['fee_pmob']))
+                print('Sent {} (fee {})'.format(amount, fee))
+                print('  to {}'.format(t['recipient_address_id']))
+            print('  in block', t['finalized_block_index'])
         print()
 
     def send(self, account_id, amount, to_address, build_only=False):
@@ -294,7 +357,7 @@ class CommandLineInterface:
 
         print('\n'.join([
             '{} {} from account {} {}',
-            'to address {}.',
+            'to address {}',
             'Fee is {}, for a total amount of {}.',
         ]).format(
             verb,
@@ -324,7 +387,7 @@ class CommandLineInterface:
                 print(f'Wrote {path}')
             return
 
-        if not confirm('Confirm? (Y/N) '):
+        if not self.confirm('Confirm? (Y/N) '):
             print('Cancelled.')
             return
 
@@ -335,31 +398,17 @@ class CommandLineInterface:
             pmob2mob(transaction_log['fee_pmob']),
         ))
 
-    def history(self, account_id):
+    def qr(self, account_id):
         account = self._load_account_prefix(account_id)
         account_id = account['account_id']
+        balance = self.client.get_balance_for_account(account_id)
 
-        transactions = self.client.get_all_transaction_logs_for_account(account_id)
+        mob_url = 'mob:///b58/{}'.format(account['main_address'])
+        qr = segno.make(mob_url)
+        qr.terminal()
 
-        def sort_key(t):
-            try:
-                return int(t['finalized_block_index'])
-            except TypeError:
-                return sys.maxsize
-
-        transactions = sorted(transactions.values(), key=sort_key)
-
-        for t in transactions:
-            print()
-            amount = _format_mob(pmob2mob(t['value_pmob']))
-            if t['direction'] == 'tx_direction_received':
-                print('Received {}'.format(amount))
-                print('  at {}'.format(t['assigned_address_id']))
-            elif t['direction'] == 'tx_direction_sent':
-                fee = _format_mob(pmob2mob(t['fee_pmob']))
-                print('Sent {} (fee {})'.format(amount, fee))
-                print('  to {}'.format(t['recipient_address_id']))
-            print('  in block', t['finalized_block_index'])
+        print()
+        _print_account(account, balance)
         print()
 
     def address(self, action, **args):
@@ -398,10 +447,107 @@ class CommandLineInterface:
         ))
         print()
 
+    def gift(self, action, **args):
+        getattr(self, 'gift_' + action)(**args)
 
-def confirm(message):
-    confirmation = input(message)
-    return confirmation.lower() in ['y', 'yes']
+    def gift_list(self):
+        gift_codes = self.client.get_all_gift_codes()
+        if gift_codes == []:
+            print('No gift codes.')
+        else:
+            for gift_code in gift_codes:
+                response = self.client.check_gift_code_status(gift_code['gift_code_b58'])
+                print()
+                _print_gift_code(
+                    gift_code['gift_code_b58'],
+                    pmob2mob(gift_code['value_pmob']),
+                    gift_code['memo'],
+                    response['gift_code_status'],
+                )
+            print()
+
+    def gift_create(self, account_id, amount, memo=''):
+        account = self._load_account_prefix(account_id)
+        amount = Decimal(amount)
+        response = self.client.build_gift_code(account['account_id'], amount, memo)
+        gift_code_b58 = response['gift_code_b58']
+        tx_proposal = response['tx_proposal']
+
+        print()
+        _print_gift_code(gift_code_b58, amount, memo)
+        print()
+        if not self.confirm(
+            'Send {} into this new gift code? (Y/N) '.format(
+                _format_mob(amount),
+            )
+        ):
+            print('Cancelled.')
+            return
+
+        gift_code = self.client.submit_gift_code(gift_code_b58, tx_proposal, account_id)
+        print('Created gift code {}'.format(gift_code['gift_code_b58']))
+
+    def gift_claim(self, account_id, gift_code):
+        account = self._load_account_prefix(account_id)
+        response = self.client.check_gift_code_status(gift_code)
+        amount = pmob2mob(response['gift_code_value'])
+        status = response['gift_code_status']
+        memo = response.get('gift_code_memo', '')
+
+        if status == 'GiftCodeClaimed':
+            print('This gift code has already been claimed.')
+            return
+
+        print()
+        _print_gift_code(gift_code, amount, memo, status)
+        print()
+        _print_account(account)
+        print()
+
+        if not self.confirm('Claim this gift code for this account? (Y/N) '):
+            print('Cancelled.')
+            return
+
+        try:
+            self.client.claim_gift_code(account['account_id'], gift_code)
+        except WalletAPIError as e:
+            if e.response['data']['server_error'] == 'GiftCodeClaimed':
+                print('This gift code has already been claimed.')
+                return
+
+        print('Successfully claimed!')
+
+    def gift_remove(self, gift_code):
+        gift_code_b58 = gift_code
+
+        try:
+            gift_code = self.client.get_gift_code(gift_code_b58)
+            response = self.client.check_gift_code_status(gift_code_b58)
+
+            amount = pmob2mob(response['gift_code_value'])
+            status = response['gift_code_status']
+            memo = response.get('gift_code_memo', '')
+            print()
+            _print_gift_code(gift_code_b58, amount, memo, status)
+            print()
+
+            if status == 'GiftCodeAvailable':
+                print('\n'.join([
+                    'This gift code is still available to be claimed.',
+                    'If you remove it and lose the code, then the funds in the gift code will be lost.',
+                ]))
+                if not self.confirm('Continue? (Y/N) '):
+                    print('Cancelled.')
+                    return
+
+            removed = self.client.remove_gift_code(gift_code_b58)
+            assert removed is True
+            print('Removed gift code {}'.format(gift_code_b58))
+
+        except WalletAPIError as e:
+            if 'GiftCodeNotFound' in e.response['data']['server_error']:
+                print('Gift code not found; nothing to remove.')
+                return
 
 
 def _format_mob(mob):
@@ -425,6 +571,14 @@ def _format_balance(balance):
     )
 
 
+def _format_gift_code_status(status):
+    return {
+        'GiftCodeSubmittedPending': 'pending',
+        'GiftCodeAvailable': 'available',
+        'GiftCodeClaimed': 'claimed',
+    }[status]
+
+
 def _print_account(account, balance=None):
     print(_format_account_header(account))
     print(indent(
@@ -436,6 +590,17 @@ def _print_account(account, balance=None):
             _format_balance(balance),
             ' '*2,
         ))
+
+
+def _print_gift_code(gift_code_b58, amount, memo='', status=None):
+    lines = []
+    lines.append(_format_mob(amount))
+    if memo:
+        lines.append(memo)
+    if status is not None:
+        lines.append('({})'.format(_format_gift_code_status(status)))
+    print(gift_code_b58)
+    print(indent('\n'.join(lines), ' '*2))
 
 
 def _print_txo(txo, received=False):
