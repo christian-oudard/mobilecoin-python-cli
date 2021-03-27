@@ -14,6 +14,7 @@ case $MC_NETWORK in
         MOBILECOIN_CONFIG=$(cat <<EOF
 {
     "executable": "$MC_DATA/full-service-$MC_NETWORK",
+    "api-url": "http://127.0.0.1:9090/wallet",
     "ledger-db": "$MC_DATA/ledger-db",
     "wallet-db": "$MC_DATA/wallet-db/wallet.db",
     "logfile": "$MC_DATA/wallet_server_log.txt",
@@ -34,6 +35,7 @@ EOF
         MOBILECOIN_CONFIG=$(cat <<EOF
 {
     "executable": "$MC_DATA/full-service-$MC_NETWORK",
+    "api-url": "http://127.0.0.1:9090/wallet",
     "ledger-db": "$MC_DATA/ledger-db",
     "wallet-db": "$MC_DATA/wallet-db/wallet.db",
     "logfile": "$MC_DATA/wallet_server_log.txt",
