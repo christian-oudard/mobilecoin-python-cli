@@ -23,7 +23,7 @@ cp mc_env.sh ~/.mc_env.sh
 
 Add the following lines to your .bashrc:
 ```shell
-if [ -f "$HOME/.env" ]; then
+if [ -f "$HOME/.mc_env.sh" ]; then
     source "$HOME/.mc_env.sh"
 fi
 ```
