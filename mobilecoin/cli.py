@@ -258,12 +258,9 @@ class CommandLineInterface:
         if args['block'] is None and block is not None:
             args['block'] = block
         account = self.client.import_account(entropy, fog_keys=fog_keys, **args)
-        account_id = account['account_id']
-        balance = self.client.get_balance_for_account(account_id)
-
         print('Imported account.')
         print()
-        _print_account(account, balance)
+        _print_account(account)
         print()
 
     def export(self, account_id):
