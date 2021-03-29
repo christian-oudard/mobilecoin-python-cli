@@ -71,8 +71,6 @@ class CommandLineInterface:
         # Create account.
         self.create_args = command_sp.add_parser('create', help='Create a new account.')
         self.create_args.add_argument('-n', '--name', help='Account name.')
-        self.create_args.add_argument('-b', '--block', type=int,
-                                      help='Block index at which to start the account. No transactions before this block will be loaded.')
 
         # Rename account.
         self.rename_args = command_sp.add_parser('rename', help='Change account name.')
@@ -253,11 +251,19 @@ class CommandLineInterface:
         _print_account(account)
         print()
 
-    def import_(self, seed, **args):
-        entropy, block, fog_keys = _load_import(seed)
-        if args['block'] is None and block is not None:
-            args['block'] = block
-        account = self.client.import_account(entropy, fog_keys=fog_keys, **args)
+    def import_(self, seed, name=None, block=None):
+        data = _load_import(seed)
+        if name is None:
+            name = data.get('account_name')
+        if block is None:
+            block = data.get('first_block_index')
+        account = self.client.import_account(
+            data['root_entropy'],
+            name,
+            block,
+            data.get('next_subaddress_index'),
+            fog_keys=data['fog_keys'],
+        )
         print('Imported account.')
         print()
         _print_account(account)
@@ -621,40 +627,49 @@ def _print_txo(txo, received=False):
 
 
 def _load_import(seed):
+    result = {}
+
     # Try to use it as hexadecimal root entropy.
     try:
         b = bytes.fromhex(seed)
         if len(b) == 32:
-            entropy = b.hex()
-            return entropy, None, None
+            result['entropy'] = b.hex()
+            return result
     except ValueError:
         pass
 
     # Try to interpret it as a BIP39 mnemonic.
     try:
-        entropy = Mnemonic('english').to_entropy(seed).hex()
-        return entropy, None, None
+        result['entropy'] = Mnemonic('english').to_entropy(seed).hex()
+        return result
     except (ValueError, LookupError):
         pass
 
     # Try to open it as a JSON filename.
     with open(seed) as f:
         data = json.load(f)
-        fog_keys = {}
-        for field in [
-            'fog_report_url',
-            'fog_report_id',
-            'fog_authority_spki',
-        ]:
-            value = data['account_key'].get(field)
-            if value is not None:
-                fog_keys[field] = value
 
-    return (
-        data['root_entropy'],
-        data.get('first_block_index'),
-        fog_keys,
-    )
+    for field in [
+        'root_entropy',
+        'account_name',
+        'first_block_index',
+        'next_subaddress_index',
+    ]:
+        value = data.get(field)
+        if value is not None:
+            result[field] = value
+
+    result['fog_keys'] = {}
+    for field in [
+        'fog_report_url',
+        'fog_report_id',
+        'fog_authority_spki',
+    ]:
+        value = data['account_key'].get(field)
+        if value is not None:
+            result['fog_keys'][field] = value
+
+    return result
 
 
 def _save_export(account, secrets, filename):
@@ -662,12 +677,13 @@ def _save_export(account, secrets, filename):
     seed_phrase = Mnemonic('english').to_mnemonic(bytes.fromhex(entropy))
 
     export_data = {
-        "seed_phrase": seed_phrase,
-        "root_entropy": entropy,
-        "account_id": account['account_id'],
-        "account_name": account['name'],
-        "account_key": secrets['account_key'],
-        "first_block_index": account['first_block_index'],
+        'seed_phrase': seed_phrase,
+        'root_entropy': entropy,
+        'account_id': account['account_id'],
+        'account_name': account['name'],
+        'account_key': secrets['account_key'],
+        'first_block_index': account['first_block_index'],
+        'next_subaddress_index': account['next_subaddress_index'],
     }
 
     path = Path(filename)

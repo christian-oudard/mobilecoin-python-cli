@@ -117,8 +117,8 @@ def tests_with_wallet(c, source_wallet):
     print('\nLoading source wallet', source_wallet)
 
     # Import an account with money.
-    entropy, block, _ = _load_import(source_wallet)
-    source_account = c.import_account(entropy, block=block)
+    data = _load_import(source_wallet)
+    source_account = c.import_account(data['root_entropy'], block=data['first_block_index'])
     source_account_id = source_account['account_id']
 
     # Check its balance and make sure it has txos.
@@ -162,7 +162,7 @@ def test_transaction(c, source_account_id):
     # Check transaction logs.
     transaction_log_map = c.get_all_transaction_logs_for_account(dest_account_id)
     amounts = [ pmob2mob(t['value_pmob']) for t in transaction_log_map.values() ]
-    assert amounts == [Decimal('0.1'), Decimal('0.09')], str(amounts)
+    assert sorted(amounts) == [Decimal('0.09'), Decimal('0.1')], str(amounts)
     assert all( t['status'] == 'tx_status_succeeded' for t in transaction_log_map.values() )
 
     c.remove_account(dest_account_id)

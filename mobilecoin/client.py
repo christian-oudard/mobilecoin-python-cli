@@ -63,26 +63,26 @@ class Client:
 
         return result
 
-    def create_account(self, name=None, block=None):
-        params = {"name": name}
-        if block is not None:
-            params["first_block_index"] = str(int(block))
+    def create_account(self, name=None):
         r = self._req({
             "method": "create_account",
-            "params": params
+            "params": {
+                "name": name,
+            }
         })
         return r['account']
 
-    def import_account(self, entropy, name=None, block=None, fog_keys=None):
-        params = {
-            "entropy": entropy,
-        }
+    def import_account(self, entropy, name=None, block=None, next_subaddress_index=None, fog_keys=None):
+        params = {'entropy': entropy}
         if name is not None:
-            params["name"] = name
+            params['name'] = name
         if block is not None:
-            params["first_block_index"] = str(int(block))
+            params['first_block_index'] = str(int(block))
+        if next_subaddress_index is not None:
+            params['next_subaddress_index'] = str(int(next_subaddress_index))
         if fog_keys is not None:
             params.update(fog_keys)
+
         r = self._req({
             "method": "import_account",
             "params": params
