@@ -7,9 +7,6 @@ import subprocess
 import sys
 from textwrap import indent
 
-from mnemonic import Mnemonic
-import segno
-
 from .utility import (
     pmob2mob,
     FEE,
@@ -79,10 +76,12 @@ class CommandLineInterface:
 
         # Import account.
         self.import_args = command_sp.add_parser('import', help='Import an account.')
-        self.import_args.add_argument('seed', help='Account seed phrase, seed file, or root entropy hex.')
+        self.import_args.add_argument('backup', help='Account backup file, mnemonic recovery phrase, or legacy root entropy in hexadecimal.')
         self.import_args.add_argument('-n', '--name', help='Account name.')
         self.import_args.add_argument('-b', '--block', type=int,
                                       help='Block index at which to start the account. No transactions before this block will be loaded.')
+        self.import_args.add_argument('--key_derivation_version', type=int,
+                                      help='The version number of the key derivation path which the mnemonic was created with.')
 
         # Export account.
         self.export_args = command_sp.add_parser('export', help='Export seed phrase.')
@@ -251,19 +250,23 @@ class CommandLineInterface:
         _print_account(account)
         print()
 
-    def import_(self, seed, name=None, block=None):
-        data = _load_import(seed)
-        if name is None:
-            name = data.get('account_name')
-        if block is None:
-            block = data.get('first_block_index')
-        account = self.client.import_account(
-            data['root_entropy'],
-            name,
-            block,
-            data.get('next_subaddress_index'),
-            fog_keys=data['fog_keys'],
-        )
+    def import_(self, backup, name=None, block=None, key_derivation_version=None):
+        data = _load_import(backup)
+
+        if name is not None:
+            data['name'] = name
+        if block is not None:
+            data['block'] = block
+        if key_derivation_version is not None:
+            data['key_derivation_version'] = key_derivation_version
+
+        if 'mnemonic' in data:
+            account = self.client.import_account(**data)
+        elif 'legacy_root_entropy' in data:
+            account = self.client.import_account_from_legacy_root_entropy(**data)
+        else:
+            raise ValueError('Could not import account from {}'.format(backup))
+
         print('Imported account.')
         print()
         _print_account(account)
@@ -402,16 +405,25 @@ class CommandLineInterface:
         ))
 
     def qr(self, account_id):
+        try:
+            import segno
+        except ImportError:
+            print('Showing QR codes requires the segno library. Try:')
+            print('$ pip install git+https://github.com/mobilecoinofficial/segno')
+            return
+
         account = self._load_account_prefix(account_id)
         account_id = account['account_id']
-        balance = self.client.get_balance_for_account(account_id)
 
         mob_url = 'mob:///b58/{}'.format(account['main_address'])
         qr = segno.make(mob_url)
-        qr.terminal()
+        try:
+            qr.terminal(compact=True)
+        except TypeError:
+            qr.terminal()
 
         print()
-        _print_account(account, balance)
+        _print_account(account)
         print()
 
     def address(self, action, **args):
@@ -626,32 +638,36 @@ def _print_txo(txo, received=False):
         print('    to unknown address')
 
 
-def _load_import(seed):
-    result = {}
-
-    # Try to use it as hexadecimal root entropy.
+def _load_import(backup):
+    # Try to load it as a file.
     try:
-        b = bytes.fromhex(seed)
+        return _load_import_file(backup)
+    except FileNotFoundError:
+        pass
+
+    # Try to use the legacy import system, treating the string as hexadecimal root entropy.
+    try:
+        b = bytes.fromhex(backup)
         if len(b) == 32:
-            result['entropy'] = b.hex()
-            return result
+            return {'legacy_root_entropy': b.hex()}
     except ValueError:
         pass
 
-    # Try to interpret it as a BIP39 mnemonic.
-    try:
-        result['entropy'] = Mnemonic('english').to_entropy(seed).hex()
-        return result
-    except (ValueError, LookupError):
-        pass
+    # Lastly, assume that this is just a mnemonic phrase written to the command line.
+    return {'mnemonic': backup}
 
-    # Try to open it as a JSON filename.
-    with open(seed) as f:
+
+def _load_import_file(filename):
+    result = {}
+
+    with open(filename) as f:
         data = json.load(f)
 
     for field in [
-        'root_entropy',
-        'account_name',
+        'mnemonic',  # Key derivation version 2+.
+        'key_derivation_version',
+        'legacy_root_entropy',  # Key derivation version 1.
+        'name',
         'first_block_index',
         'next_subaddress_index',
     ]:
@@ -673,23 +689,27 @@ def _load_import(seed):
 
 
 def _save_export(account, secrets, filename):
-    entropy = secrets['entropy']
-    seed_phrase = Mnemonic('english').to_mnemonic(bytes.fromhex(entropy))
+    export_data = {}
 
-    export_data = {
-        'seed_phrase': seed_phrase,
-        'root_entropy': entropy,
+    mnemonic = secrets.get('mnemonic')
+    if mnemonic is not None:
+        export_data['mnemonic'] = mnemonic
+        export_data['key_derivation_version'] = secrets['key_derivation_version']
+    legacy_root_entropy = secrets.get('entropy')
+    if legacy_root_entropy is not None:
+        export_data['root_entropy'] = legacy_root_entropy
+
+    export_data.update({
         'account_id': account['account_id'],
         'account_name': account['name'],
         'account_key': secrets['account_key'],
         'first_block_index': account['first_block_index'],
         'next_subaddress_index': account['next_subaddress_index'],
-    }
+    })
 
     path = Path(filename)
     if path.exists():
         raise OSError('File exists.')
-
     with path.open('w') as f:
         json.dump(export_data, f, indent=4)
         f.write('\n')

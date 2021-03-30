@@ -72,12 +72,15 @@ class Client:
         })
         return r['account']
 
-    def import_account(self, entropy, name=None, block=None, next_subaddress_index=None, fog_keys=None):
-        params = {'entropy': entropy}
+    def import_account(self, mnemonic, key_derivation_version, name=None, first_block_index=None, next_subaddress_index=None, fog_keys=None):
+        params = {
+            'mnemonic': mnemonic,
+            'key_derivation_version': str(int(key_derivation_version)),
+        }
         if name is not None:
             params['name'] = name
-        if block is not None:
-            params['first_block_index'] = str(int(block))
+        if first_block_index is not None:
+            params['first_block_index'] = str(int(first_block_index))
         if next_subaddress_index is not None:
             params['next_subaddress_index'] = str(int(next_subaddress_index))
         if fog_keys is not None:
@@ -85,6 +88,25 @@ class Client:
 
         r = self._req({
             "method": "import_account",
+            "params": params
+        })
+        return r['account']
+
+    def import_account_from_legacy_root_entropy(self, legacy_root_entropy, name=None, first_block_index=None, next_subaddress_index=None, fog_keys=None):
+        params = {
+            'entropy': legacy_root_entropy,
+        }
+        if name is not None:
+            params['name'] = name
+        if first_block_index is not None:
+            params['first_block_index'] = str(int(first_block_index))
+        if next_subaddress_index is not None:
+            params['next_subaddress_index'] = str(int(next_subaddress_index))
+        if fog_keys is not None:
+            params.update(fog_keys)
+
+        r = self._req({
+            "method": "import_account_from_legacy_root_entropy",
             "params": params
         })
         return r['account']

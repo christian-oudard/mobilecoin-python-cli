@@ -13,7 +13,5 @@ setup(
     scripts=['bin/mobcli'],
     install_requires=[
         'requests',
-        'mnemonic',
-        'segno',
     ],
 )
