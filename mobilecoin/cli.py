@@ -80,7 +80,7 @@ class CommandLineInterface:
         self.import_args.add_argument('-n', '--name', help='Account name.')
         self.import_args.add_argument('-b', '--block', type=int,
                                       help='Block index at which to start the account. No transactions before this block will be loaded.')
-        self.import_args.add_argument('--key_derivation_version', type=int,
+        self.import_args.add_argument('--key_derivation_version', type=int, default=2,
                                       help='The version number of the key derivation path which the mnemonic was created with.')
 
         # Export account.
@@ -250,15 +250,14 @@ class CommandLineInterface:
         _print_account(account)
         print()
 
-    def import_(self, backup, name=None, block=None, key_derivation_version=None):
+    def import_(self, backup, name=None, block=None, key_derivation_version=2):
         data = _load_import(backup)
 
         if name is not None:
             data['name'] = name
         if block is not None:
             data['block'] = block
-        if key_derivation_version is not None:
-            data['key_derivation_version'] = key_derivation_version
+        data['key_derivation_version'] = key_derivation_version
 
         if 'mnemonic' in data:
             account = self.client.import_account(**data)

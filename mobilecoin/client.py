@@ -72,7 +72,7 @@ class Client:
         })
         return r['account']
 
-    def import_account(self, mnemonic, key_derivation_version, name=None, first_block_index=None, next_subaddress_index=None, fog_keys=None):
+    def import_account(self, mnemonic, key_derivation_version=2, name=None, first_block_index=None, next_subaddress_index=None, fog_keys=None):
         params = {
             'mnemonic': mnemonic,
             'key_derivation_version': str(int(key_derivation_version)),
