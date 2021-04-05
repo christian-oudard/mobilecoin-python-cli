@@ -17,7 +17,6 @@ from mobilecoin.cli import (
 
 
 def main():
-    # c = Client(verbose=True)
     c = Client(verbose=False)
 
     source_wallet = sys.argv[1]
@@ -88,7 +87,7 @@ def test_account_management(c):
 
     # Import an account from entropy.
     entropy = '0000000000000000000000000000000000000000000000000000000000000000'
-    account = c.import_account(entropy)
+    account = c.import_account_from_legacy_root_entropy(entropy)
     account_id = account['account_id']
     assert (
         account['main_address']
@@ -118,7 +117,7 @@ def tests_with_wallet(c, source_wallet):
 
     # Import an account with money.
     data = _load_import(source_wallet)
-    source_account = c.import_account(data['root_entropy'], block=data['first_block_index'])
+    source_account = c.import_account(**data)
     source_account_id = source_account['account_id']
 
     # Check its balance and make sure it has txos.

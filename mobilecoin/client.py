@@ -152,11 +152,11 @@ class Client:
         })
         return r['txo_map']
 
-    def get_txo(self, txo_id_hex):
+    def get_txo(self, txo_id):
         r = self._req({
             "method": "get_txo",
             "params": {
-                "txo_id_hex": txo_id_hex,
+                "txo_id": txo_id,
             },
         })
         return r['txo']
@@ -318,7 +318,7 @@ class Client:
                 "gift_code_b58": gift_code_b58,
             },
         })
-        return r['txo_id_hex']
+        return r['txo_id']
 
     def remove_gift_code(self, gift_code_b58):
         r = self._req({
@@ -353,12 +353,12 @@ class Client:
         else:
             raise Exception('Gift code {} never reached status {}.'.format(gift_code_b58, target_status))
 
-    def poll_txo(self, txo_id_hex, seconds=10):
+    def poll_txo(self, txo_id, seconds=10):
         for _ in range(10):
             try:
-                return self.get_txo(txo_id_hex)
+                return self.get_txo(txo_id)
             except WalletAPIError:
                 pass
             time.sleep(1)
         else:
-            raise Exception('Txo {} never landed.'.format(txo_id_hex))
+            raise Exception('Txo {} never landed.'.format(txo_id))

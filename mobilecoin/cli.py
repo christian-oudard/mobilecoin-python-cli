@@ -321,13 +321,19 @@ class CommandLineInterface:
 
         transactions = self.client.get_all_transaction_logs_for_account(account_id)
 
-        def sort_key(t):
-            try:
-                return int(t['finalized_block_index'])
-            except TypeError:
-                return sys.maxsize
+        def block_key(t):
+            submitted = t['submitted_block_index']
+            finalized = t['finalized_block_index']
+            if submitted is not None and finalized is not None:
+                return min([submitted, finalized])
+            elif submitted is not None and finalized is None:
+                return submitted
+            elif submitted is None and finalized is not None:
+                return finalized
+            else:
+                return None
 
-        transactions = sorted(transactions.values(), key=sort_key)
+        transactions = sorted(transactions.values(), key=block_key)
 
         for t in transactions:
             print()
@@ -339,7 +345,7 @@ class CommandLineInterface:
                 fee = _format_mob(pmob2mob(t['fee_pmob']))
                 print('Sent {} (fee {})'.format(amount, fee))
                 print('  to {}'.format(t['recipient_address_id']))
-            print('  in block', t['finalized_block_index'])
+            print('  in block', block_key(t))
         print()
 
     def send(self, account_id, amount, to_address, build_only=False):
@@ -498,7 +504,7 @@ class CommandLineInterface:
             print('Cancelled.')
             return
 
-        gift_code = self.client.submit_gift_code(gift_code_b58, tx_proposal, account_id)
+        gift_code = self.client.submit_gift_code(gift_code_b58, tx_proposal, account['account_id'])
         print('Created gift code {}'.format(gift_code['gift_code_b58']))
 
     def gift_claim(self, account_id, gift_code):
