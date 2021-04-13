@@ -354,6 +354,10 @@ class CommandLineInterface:
         balance = self.client.get_balance_for_account(account_id)
         unspent = pmob2mob(balance['unspent_pmob'])
 
+        if unspent <= FEE:
+            print('There is not enough MOB in the account {} to send a transaction.'.format(account_id[:6]))
+            return
+
         if amount == "all":
             amount = unspent - FEE
             total_amount = unspent
