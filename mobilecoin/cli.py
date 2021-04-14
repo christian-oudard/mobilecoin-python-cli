@@ -40,7 +40,12 @@ class CommandLineInterface:
         # Dispatch command.
         setattr(self, 'import', self.import_)  # Can't name a function "import".
         command_func = getattr(self, command)
-        command_func(**args)
+        try:
+            command_func(**args)
+        except ConnectionError as e:
+            print(e)
+            print('Did you run "mobcli start"? You may also want to check the logs at {}.'.format(self.config['logfile']))
+            exit(1)
 
     def _create_parsers(self):
         self.parser = argparse.ArgumentParser(

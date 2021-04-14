@@ -41,7 +41,7 @@ class Client:
         try:
             r = requests.post(self.url, json=request_data)
         except requests.ConnectionError:
-            raise ConnectionError(f'Could not connect to server at {self.url}.')
+            raise ConnectionError(f'Could not connect to wallet server at {self.url}.')
 
         try:
             response_data = r.json()
