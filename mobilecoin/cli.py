@@ -4,7 +4,6 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import sys
 from textwrap import indent
 
 from .utility import (
@@ -221,10 +220,6 @@ class CommandLineInterface:
             account_list.append((account_id, account, balance))
 
         for (account_id, account, balance) in account_list:
-            total_blocks = int(balance['network_block_index'])
-            offline = (total_blocks == 0)
-            if offline:
-                total_blocks = balance['local_block_index']
             print()
             _print_account(account, balance)
 
@@ -337,15 +332,28 @@ class CommandLineInterface:
 
         for t in transactions:
             print()
-            amount = _format_mob(pmob2mob(t['value_pmob']))
             if t['direction'] == 'tx_direction_received':
+                amount = _format_mob(
+                    sum(
+                        pmob2mob(txo['value_pmob'])
+                        for txo in t['output_txos']
+                    )
+                )
                 print('Received {}'.format(amount))
                 print('  at {}'.format(t['assigned_address_id']))
             elif t['direction'] == 'tx_direction_sent':
-                fee = _format_mob(pmob2mob(t['fee_pmob']))
-                print('Sent {} (fee {})'.format(amount, fee))
-                print('  to {}'.format(t['recipient_address_id']))
-            print('  in block', block_key(t))
+                for txo in t['output_txos']:
+                    amount = _format_mob(pmob2mob(txo['value_pmob']))
+                    print('Sent {}'.format(amount))
+                    if not txo['recipient_address_id']:
+                        print('  to an unknown address.')
+                    else:
+                        print('  to {}'.format(txo['recipient_address_id']))
+            print('  in block {}'.format(block_key(t)), end=', ')
+            if t['fee_pmob'] is None:
+                print('paying an unknown fee.')
+            else:
+                print('paying a fee of {}'.format(_format_mob(pmob2mob(t['fee_pmob']))))
         print()
 
     def send(self, account_id, amount, to_address, build_only=False):
@@ -583,15 +591,27 @@ def _format_account_header(account):
 
 
 def _format_balance(balance):
-    total_blocks = int(balance['network_block_index'])
-    offline = (total_blocks == 0)
+    offline = False
+    network_block = int(balance['network_block_index'])
+    if network_block == 0:
+        offline = True
+        network_block = int(balance['local_block_index'])
+
+    account_block = int(balance['account_block_index'])
+    if account_block == network_block:
+        sync_status = 'synced'
+    else:
+        sync_status = 'syncing, {}/{}'.format(balance['account_block_index'], network_block)
+
     if offline:
-        total_blocks = balance['local_block_index']
-    return '{} ({}/{} blocks synced) {}'.format(
+        offline_status = ' [offline]'
+    else:
+        offline_status = ''
+
+    return '{} ({}) {}'.format(
         _format_mob(pmob2mob(balance['unspent_pmob'])),
-        balance['account_block_index'],
-        total_blocks,
-        ' [offline]' if offline else '',
+        sync_status,
+        offline_status,
     )
 
 
