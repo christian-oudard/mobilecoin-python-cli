@@ -745,5 +745,5 @@ def _save_export(account, secrets, filename):
     if path.exists():
         raise OSError('File exists.')
     with path.open('w') as f:
-        json.dump(export_data, f, indent=4)
+        json.dump(export_data, f, indent=2)
         f.write('\n')

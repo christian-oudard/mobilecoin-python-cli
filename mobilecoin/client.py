@@ -31,11 +31,11 @@ class Client:
             "api_version": "2",
             "id": 1,
         }
-        request_data = {**default_params, **request_data}
+        request_data = {**request_data, **default_params}
 
         if self.verbose:
             print('POST', self.url)
-            print(json.dumps(request_data, indent=4))
+            print(json.dumps(request_data, indent=2))
             print()
 
         try:
@@ -50,7 +50,7 @@ class Client:
 
         if self.verbose:
             print(r.status_code, http.client.responses[r.status_code])
-            print(json.dumps(response_data, indent=4))
+            print(json.dumps(response_data, indent=2))
             print()
 
         # Check for errors and unwrap result.
@@ -207,8 +207,7 @@ class Client:
             "method": "build_and_submit_transaction",
             "params": {
                 "account_id": account_id,
-                "value_pmob": amount,
-                "recipient_public_address": to_address,
+                "addresses_and_values": [(to_address, amount)],
             }
         })
         return r['transaction_log']
@@ -219,8 +218,7 @@ class Client:
             "method": "build_transaction",
             "params": {
                 "account_id": account_id,
-                "value_pmob": amount,
-                "recipient_public_address": to_address,
+                "addresses_and_values": [(to_address, amount)],
             }
         })
         return r['tx_proposal']
