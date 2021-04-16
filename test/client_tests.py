@@ -211,7 +211,7 @@ def test_prepared_transaction(c, source_account_id):
 def test_subaddresses(c, source_account_id):
     print('\ntest_subaddresses')
 
-    addresses = c.get_all_addresses_for_account(source_account_id)
+    addresses = c.get_addresses_for_account(source_account_id)
     source_address = list(addresses.keys())[0]
 
     # Create a temporary account.
@@ -219,13 +219,13 @@ def test_subaddresses(c, source_account_id):
     dest_account_id = dest_account['account_id']
 
     # Create a subaddress for the destination account.
-    addresses = c.get_all_addresses_for_account(dest_account_id)
+    addresses = c.get_addresses_for_account(dest_account_id)
     assert len(addresses) == 2  # Main address and change address.
 
     address = c.assign_address_for_account(dest_account_id, 'Address Name')
     dest_address = address['public_address']
 
-    addresses = c.get_all_addresses_for_account(dest_account_id)
+    addresses = c.get_addresses_for_account(dest_account_id)
     assert len(addresses) == 3
     assert addresses[dest_address]['metadata'] == 'Address Name'
 

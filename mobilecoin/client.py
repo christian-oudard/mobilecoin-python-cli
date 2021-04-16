@@ -192,11 +192,13 @@ class Client:
         })
         return r['address']
 
-    def get_all_addresses_for_account(self, account_id):
+    def get_addresses_for_account(self, account_id, offset=0, limit=1000):
         r = self._req({
-            "method": "get_all_addresses_for_account",
+            "method": "get_addresses_for_account",
             "params": {
                 "account_id": account_id,
+                "offset": str(int(offset)),
+                "limit": str(int(limit)),
             },
         })
         return r['address_map']

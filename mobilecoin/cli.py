@@ -453,7 +453,7 @@ class CommandLineInterface:
 
     def address_list(self, account_id):
         account = self._load_account_prefix(account_id)
-        addresses = self.client.get_all_addresses_for_account(account['account_id'])
+        addresses = self.client.get_addresses_for_account(account['account_id'])
 
         print()
         print(_format_account_header(account))
