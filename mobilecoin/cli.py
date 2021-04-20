@@ -256,7 +256,7 @@ class CommandLineInterface:
         if name is not None:
             data['name'] = name
         if block is not None:
-            data['block'] = block
+            data['first_block_index'] = block
         data['key_derivation_version'] = key_derivation_version
 
         if 'mnemonic' in data:
