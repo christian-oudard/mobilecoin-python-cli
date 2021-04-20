@@ -13,6 +13,7 @@ from .utility import (
 from .client import (
     Client,
     WalletAPIError,
+    MAX_TOMBSTONE_BLOCKS,
 )
 
 
@@ -101,6 +102,10 @@ class CommandLineInterface:
         # Send transaction.
         self.send_args = command_sp.add_parser('send', help='Send a transaction.')
         self.send_args.add_argument('--build-only', action='store_true', help='Just build the transaction, do not submit it.')
+        self.send_args.add_argument(
+            '--delay', type=int, default=0,
+            help='Make a transaction which cannot be submitted until after the given number of blocks.'
+        )
         self.send_args.add_argument('account_id', help='Source account ID.')
         self.send_args.add_argument('amount', help='Amount of MOB to send.')
         self.send_args.add_argument('to_address', help='Address to send to.')
@@ -366,7 +371,7 @@ class CommandLineInterface:
                 print('paying a fee of {}'.format(_format_mob(pmob2mob(t['fee_pmob']))))
         print()
 
-    def send(self, account_id, amount, to_address, build_only=False):
+    def send(self, account_id, amount, to_address, build_only=False, delay=0):
         account = self._load_account_prefix(account_id)
         account_id = account['account_id']
         balance = self.client.get_balance_for_account(account_id)
@@ -410,7 +415,8 @@ class CommandLineInterface:
             return
 
         if build_only:
-            tx_proposal = self.client.build_transaction(account_id, amount, to_address)
+            tombstone_block = int(balance['network_block_index']) + delay + MAX_TOMBSTONE_BLOCKS
+            tx_proposal = self.client.build_transaction(account_id, amount, to_address, tombstone_block)
             path = Path('tx_proposal.json')
             if path.exists():
                 print(f'The file {path} already exists. Please rename the existing file and retry.')
@@ -439,6 +445,21 @@ class CommandLineInterface:
         with Path(proposal).open() as f:
             tx_proposal = json.load(f)
 
+        # Check that the tombstone block is within range.
+        tombstone_block = int(tx_proposal['tx']['prefix']['tombstone_block'])
+        network_status = self.client.get_network_status()
+        lo = int(network_status['network_block_index']) + 1
+        hi = lo + MAX_TOMBSTONE_BLOCKS
+        if lo >= tombstone_block:
+            print('This transaction has expired, and can no longer be submitted.')
+            return
+        if tombstone_block > hi:
+            print('This transaction cannot be submitted yet. Wait for {} more blocks.'.format(
+                tombstone_block - hi))
+
+        # Confirm and submit.
+        if account_id is None:
+            print('This transaction will not be logged, because an account id was not provided.')
         total_value = sum( pmob2mob(outlay['value']) for outlay in tx_proposal['outlay_list'] )
         if not self.confirm(
             'Submit this transaction proposal for {}? (Y/N) '.format(_format_mob(total_value))
@@ -447,8 +468,7 @@ class CommandLineInterface:
             return
 
         self.client.submit_transaction(tx_proposal)
-
-        print('Submitted.')
+        print('Submitted. The file {} is now unusable for sending transactions.'.format(proposal))
 
     def qr(self, account_id):
         try:

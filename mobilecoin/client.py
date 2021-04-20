@@ -10,6 +10,8 @@ from .utility import mob2pmob
 
 DEFAULT_URL = 'http://127.0.0.1:9090/wallet'
 
+MAX_TOMBSTONE_BLOCKS = 100
+
 
 class WalletAPIError(Exception):
     def __init__(self, response):
@@ -161,6 +163,12 @@ class Client:
         })
         return r['txo']
 
+    def get_network_status(self):
+        r = self._req({
+            "method": "get_network_status",
+        })
+        return r['network_status']
+
     def get_balance_for_account(self, account_id):
         r = self._req({
             "method": "get_balance_for_account",
@@ -214,13 +222,14 @@ class Client:
         })
         return r['transaction_log']
 
-    def build_transaction(self, account_id, amount, to_address):
+    def build_transaction(self, account_id, amount, to_address, tombstone_block=None):
         amount = str(mob2pmob(amount))
         r = self._req({
             "method": "build_transaction",
             "params": {
                 "account_id": account_id,
                 "addresses_and_values": [(to_address, amount)],
+                "tombstone_block": str(int(tombstone_block)),
             }
         })
         return r['tx_proposal']
