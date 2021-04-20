@@ -225,12 +225,12 @@ class Client:
         })
         return r['tx_proposal']
 
-    def submit_transaction(self, account_id, tx_proposal):
+    def submit_transaction(self, tx_proposal, account_id=None):
         r = self._req({
             "method": "submit_transaction",
             "params": {
-                "account_id": account_id,
                 "tx_proposal": tx_proposal,
+                "account_id": account_id,
             },
         })
         return r['transaction_log']

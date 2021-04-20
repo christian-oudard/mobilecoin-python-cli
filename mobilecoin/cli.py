@@ -105,6 +105,11 @@ class CommandLineInterface:
         self.send_args.add_argument('amount', help='Amount of MOB to send.')
         self.send_args.add_argument('to_address', help='Address to send to.')
 
+        # Submit transaction proposal.
+        self.submit_args = command_sp.add_parser('submit', help='Submit a transaction proposal.')
+        self.submit_args.add_argument('proposal', help='A tx_proposal.json file.')
+        self.submit_args.add_argument('account_id', nargs='?', help='Source account ID. Only used for logging the transaction.')
+
         # Address QR code.
         self.qr_args = command_sp.add_parser('qr', help='Show account address as a QR code')
         self.qr_args.add_argument('account_id', help='Account ID.')
@@ -408,10 +413,10 @@ class CommandLineInterface:
             tx_proposal = self.client.build_transaction(account_id, amount, to_address)
             path = Path('tx_proposal.json')
             if path.exists():
-                print(f'{path} already exists.')
+                print(f'The file {path} already exists. Please rename the existing file and retry.')
             else:
                 with path.open('w') as f:
-                    json.dump(tx_proposal, f)
+                    json.dump(tx_proposal, f, indent=2)
                 print(f'Wrote {path}')
             return
 
@@ -425,6 +430,25 @@ class CommandLineInterface:
             pmob2mob(transaction_log['value_pmob']),
             pmob2mob(transaction_log['fee_pmob']),
         ))
+
+    def submit(self, proposal, account_id=None):
+        if account_id is not None:
+            account = self._load_account_prefix(account_id)
+            account_id = account['account_id']
+
+        with Path(proposal).open() as f:
+            tx_proposal = json.load(f)
+
+        total_value = sum( pmob2mob(outlay['value']) for outlay in tx_proposal['outlay_list'] )
+        if not self.confirm(
+            'Submit this transaction proposal for {}? (Y/N) '.format(_format_mob(total_value))
+        ):
+            print('Cancelled.')
+            return
+
+        self.client.submit_transaction(tx_proposal)
+
+        print('Submitted.')
 
     def qr(self, account_id):
         try:

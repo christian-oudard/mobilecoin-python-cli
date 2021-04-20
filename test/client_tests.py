@@ -188,7 +188,7 @@ def test_prepared_transaction(c, source_account_id):
     status = c.check_receiver_receipt_status(dest_account['main_address'], receipt)
     assert status['receipt_transaction_status'] == 'TransactionPending'
 
-    transaction_log = c.submit_transaction(source_account_id, tx_proposal)
+    transaction_log = c.submit_transaction(tx_proposal, source_account_id)
     tx_index = int(transaction_log['submitted_block_index'])
 
     balance = c.poll_balance(dest_account_id, tx_index + 1)
