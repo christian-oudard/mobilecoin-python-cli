@@ -28,6 +28,11 @@ if [ -f "$HOME/.mc_env.sh" ]; then
 fi
 ```
 
+The CLI sends its requests to the wallet service executable. Download it from https://github.com/mobilecoinofficial/full-service/releases. Copy the file to the correct location.
+```shell
+cp full-service ~/.mobilecoin/testnet/full-service-testnet
+```
+
 The environment variables file specifies to connect to the test network by default, but
 you can change it to connect to the main network if you know what you're doing, and are
 confident you will not lose actual funds.

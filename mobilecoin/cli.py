@@ -267,9 +267,9 @@ class CommandLineInterface:
             data['name'] = name
         if block is not None:
             data['first_block_index'] = block
-        data['key_derivation_version'] = key_derivation_version
 
         if 'mnemonic' in data:
+            data['key_derivation_version'] = key_derivation_version
             account = self.client.import_account(**data)
         elif 'legacy_root_entropy' in data:
             account = self.client.import_account_from_legacy_root_entropy(**data)
