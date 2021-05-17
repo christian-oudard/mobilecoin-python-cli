@@ -8,7 +8,6 @@ from mobilecoin import (
     Client,
     WalletAPIError,
     pmob2mob,
-    FEE,
 )
 from mobilecoin.cli import (
     CommandLineInterface,
@@ -27,7 +26,7 @@ def main():
     cli.config['wallet-db'] = db_file.name
     cli.stop()
     time.sleep(0.5)  # Wait for other servers to stop.
-    cli.start(bg=True)
+    cli.start(bg=True, unencrypted=True)
     time.sleep(1.5)  # Wait for the server to start listening.
 
     # Start and end with an empty wallet.
@@ -111,8 +110,6 @@ def test_account_management(c):
 
 
 def tests_with_wallet(c, source_wallet):
-    assert FEE == Decimal('0.01')
-
     print('\nLoading source wallet', source_wallet)
 
     # Import an account with money.
@@ -153,7 +150,7 @@ def test_transaction(c, source_account_id):
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.1')
 
     # Send back the remaining money.
-    transaction_log = c.build_and_submit_transaction(dest_account_id, 0.09, source_account['main_address'])
+    transaction_log = c.build_and_submit_transaction(dest_account_id, 0.0996, source_account['main_address'])
     tx_index = int(transaction_log['submitted_block_index'])
     balance = c.poll_balance(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
@@ -161,7 +158,7 @@ def test_transaction(c, source_account_id):
     # Check transaction logs.
     transaction_log_map = c.get_all_transaction_logs_for_account(dest_account_id)
     amounts = [ pmob2mob(t['value_pmob']) for t in transaction_log_map.values() ]
-    assert sorted(amounts) == [Decimal('0.09'), Decimal('0.1')], str(amounts)
+    assert sorted( float(a) for a in amounts ) == [0.0996, 0.1], str(amounts)
     assert all( t['status'] == 'tx_status_succeeded' for t in transaction_log_map.values() )
 
     c.remove_account(dest_account_id)
@@ -198,7 +195,7 @@ def test_prepared_transaction(c, source_account_id):
     assert status['receipt_transaction_status'] == 'TransactionSuccess'
 
     # Send back the remaining money.
-    transaction_log = c.build_and_submit_transaction(dest_account_id, 0.09, source_account['main_address'])
+    transaction_log = c.build_and_submit_transaction(dest_account_id, 0.0996, source_account['main_address'])
     tx_index = int(transaction_log['submitted_block_index'])
     balance = c.poll_balance(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
@@ -242,7 +239,7 @@ def test_subaddresses(c, source_account_id):
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
 
     # Send the money back.
-    transaction_log = c.build_and_submit_transaction(dest_account_id, 0.09, source_address)
+    transaction_log = c.build_and_submit_transaction(dest_account_id, 0.0996, source_address)
     tx_index = int(transaction_log['submitted_block_index'])
     balance = c.poll_balance(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')
@@ -282,10 +279,10 @@ def test_gift_codes(c, source_account_id):
     txo_id_hex = c.claim_gift_code(dest_account_id, gift_code_b58)
     c.poll_txo(txo_id_hex)
     balance = c.get_balance_for_account(dest_account_id)
-    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.09')
+    assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0996')
 
     # Send back the remaining money. We incurred two fees to submit and claim the gift code.
-    transaction_log = c.build_and_submit_transaction(dest_account_id, 0.08, source_account['main_address'])
+    transaction_log = c.build_and_submit_transaction(dest_account_id, 0.0992, source_account['main_address'])
     tx_index = int(transaction_log['submitted_block_index'])
     balance = c.poll_balance(dest_account_id, tx_index + 1)
     assert pmob2mob(balance['unspent_pmob']) == Decimal('0.0')

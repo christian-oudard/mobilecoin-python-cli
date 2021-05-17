@@ -9,7 +9,6 @@ from textwrap import indent
 
 from .utility import (
     pmob2mob,
-    FEE,
 )
 from .client import (
     Client,
@@ -69,6 +68,9 @@ class CommandLineInterface:
 
         # Stop server.
         self.stop_args = command_sp.add_parser('stop', help='Stop the local MobileCoin wallet server.')
+
+        # Network status.
+        self.status_args = command_sp.add_parser('status', help='Check the status of the MobileCoin network.')
 
         # List accounts.
         self.list_args = command_sp.add_parser('list', help='List accounts.')
@@ -235,6 +237,22 @@ class CommandLineInterface:
             print('Stopping MobileCoin wallet server...')
         subprocess.Popen(['killall', '-v', self.config['executable']])
 
+    def status(self):
+        network_status = self.client.get_network_status()
+        fee = pmob2mob(network_status['fee_pmob'])
+
+        if int(network_status['network_block_index']) == 0:
+            print('Offline.')
+            print('Local ledger has {} blocks.'.format(network_status['local_block_index']))
+            print('Expected fee is {}'.format(_format_mob(fee)))
+        else:
+            print('Connected to network.')
+            print('Local ledger has {}/{} blocks.'.format(
+                network_status['local_block_index'],
+                network_status['network_block_index'],
+            ))
+            print('Network fee is {}'.format(_format_mob(fee)))
+
     def list(self, **args):
         accounts = self.client.get_all_accounts(**args)
 
@@ -390,16 +408,19 @@ class CommandLineInterface:
         balance = self.client.get_balance_for_account(account_id)
         unspent = pmob2mob(balance['unspent_pmob'])
 
-        if unspent <= FEE:
+        network_status = self.client.get_network_status()
+        fee = pmob2mob(network_status['fee_pmob'])
+
+        if unspent <= fee:
             print('There is not enough MOB in the account {} to send a transaction.'.format(account_id[:6]))
             return
 
         if amount == "all":
-            amount = unspent - FEE
+            amount = unspent - fee
             total_amount = unspent
         else:
             amount = Decimal(amount)
-            total_amount = amount + FEE
+            total_amount = amount + fee
 
         if build_only:
             verb = 'Building transaction for'
@@ -416,7 +437,7 @@ class CommandLineInterface:
             account_id[:6],
             account['name'],
             to_address,
-            _format_mob(FEE),
+            _format_mob(fee),
             _format_mob(total_amount),
         ))
 

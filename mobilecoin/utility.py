@@ -1,9 +1,6 @@
 from decimal import Decimal
 
 
-FEE = Decimal('0.01')
-
-
 PMOB = Decimal('1e12')
 
 
