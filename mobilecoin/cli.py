@@ -1,5 +1,6 @@
 import argparse
 from decimal import Decimal
+from getpass import getpass
 import json
 import os
 from pathlib import Path
@@ -63,6 +64,8 @@ class CommandLineInterface:
         self.start_args.add_argument('--offline', action='store_true', help='Start in offline mode.')
         self.start_args.add_argument('--bg', action='store_true',
                                      help='Start server in the background, stop with "mobilecoin stop".')
+        self.start_args.add_argument('--unencrypted', action='store_true',
+                                     help='Do not encrypt the wallet database. Secret keys will be stored on the hard drive in plaintext.')
 
         # Stop server.
         self.stop_args = command_sp.add_parser('stop', help='Stop the local MobileCoin wallet server.')
@@ -179,7 +182,17 @@ class CommandLineInterface:
         confirmation = input(message)
         return confirmation.lower() in ['y', 'yes']
 
-    def start(self, offline=False, bg=False):
+    def start(self, offline=False, bg=False, unencrypted=False):
+        if unencrypted:
+            password = ''
+        else:
+            password = getpass('Wallet database password: ')
+            if password == '':
+                print('You must provide a password, or start the server with the option "--unencrypted".')
+                exit(1)
+
+        env = {'MC_PASSWORD': password}
+
         wallet_server_command = [
             self.config['executable'],
             '--ledger-db', self.config['ledger-db'],
@@ -211,11 +224,11 @@ class CommandLineInterface:
         Path(self.config['wallet-db']).parent.mkdir(parents=True, exist_ok=True)
 
         if bg:
-            subprocess.Popen(' '.join(wallet_server_command), shell=True)
+            subprocess.Popen(' '.join(wallet_server_command), shell=True, env=env)
             print('Started, view log at {}.'.format(self.config['logfile']))
             print('Stop server with "mobcli stop".')
         else:
-            subprocess.run(' '.join(wallet_server_command), shell=True)
+            subprocess.run(' '.join(wallet_server_command), shell=True, env=env)
 
     def stop(self):
         if self.verbose:
