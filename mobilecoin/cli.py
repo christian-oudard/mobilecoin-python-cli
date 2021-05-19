@@ -65,6 +65,8 @@ class CommandLineInterface:
                                      help='Start server in the background, stop with "mobilecoin stop".')
         self.start_args.add_argument('--unencrypted', action='store_true',
                                      help='Do not encrypt the wallet database. Secret keys will be stored on the hard drive in plaintext.')
+        self.start_args.add_argument('--change-password', action='store_true',
+                                     help='Change the password for the database.')
 
         # Stop server.
         self.stop_args = command_sp.add_parser('stop', help='Stop the local MobileCoin wallet server.')
@@ -184,16 +186,26 @@ class CommandLineInterface:
         confirmation = input(message)
         return confirmation.lower() in ['y', 'yes']
 
-    def start(self, offline=False, bg=False, unencrypted=False):
-        if unencrypted:
-            password = ''
-        else:
+    def start(self, offline=False, bg=False, unencrypted=False, change_password=False):
+        password = ''
+        new_password = ''
+        if not unencrypted:
             password = getpass('Wallet database password: ')
             if password == '':
                 print('You must provide a password, or start the server with the option "--unencrypted".')
                 exit(1)
-
+            if change_password:
+                new_password = getpass('New password: ')
+                if new_password == '':
+                    print('Cannot change to an empty password.')
+                    exit(1)
+                confirm_password = getpass('Confirm new password: ')
+                if new_password != confirm_password:
+                    print('Passwords do not match.')
+                    exit(1)
         env = {'MC_PASSWORD': password}
+        if new_password != '':
+            env['MC_CHANGED_PASSWORD'] = new_password
 
         wallet_server_command = [
             self.config['executable'],
